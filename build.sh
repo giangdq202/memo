@@ -11,7 +11,7 @@ APP_BUNDLE="${APP_NAME}.app"
 # older Mac with error -10825 (kLSIncompatibleSystemVersionErr).
 DEPLOYMENT_TARGET="11.0"
 
-echo "=== Building ${APP_NAME} (Optimized, Universal) ==="
+echo "=== Building ${APP_NAME} (Optimized, arm64) ==="
 
 # 1. Generate icon
 echo "[1/4] Generating AppIcon.icns..."

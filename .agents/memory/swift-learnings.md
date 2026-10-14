@@ -87,3 +87,26 @@
 
 **CLI Argument Parsing**
 - `CommandLine.arguments.contains("--debug")` provides lightweight runtime flag handling without extra dependencies.
+
+---
+
+## Session 4 - 2026-10-14: Core Optimizations & Logic Fixes
+
+### Concepts Learned
+
+**Zero-Allocation in Tight Loops**
+- In `getifaddrs` traversal (~20 interfaces sampled every 250ms), avoid `String(cString: namePtr)` heap allocation; use C function `strcmp(namePtr, primaryInterface) == 0`.
+- Cache `SCDynamicStore` reference once on class initialization instead of creating/destroying an IPC connection on every cycle.
+
+**Interface Transition Spike Elimination**
+- When `PrimaryInterface` switches (e.g. Wi-Fi `en0` to Ethernet `en5`), network cumulative counters differ completely. Suppressing delta calculation for that single cycle prevents massive false throughput spikes.
+
+**Process Execution Locale Consistency**
+- When parsing numeric CLI output from `/bin/ps` (`pcpu`, `rss`), system decimal separator can change in non-English locales (e.g., `,` vs `.`). Setting `task.environment = ["LC_ALL": "C"]` guarantees standard POSIX formatting.
+
+**Safe Dictionary Mutation & Optional Chaining**
+- Avoid `byName[name]!` force unwrap; use `if var existing = byName[name] { ... byName[name] = existing }`.
+- In custom AppKit view drawing, avoid `cachedLine!.draw(...)` force unwrap in favor of safe optional chaining `cachedLine?.draw(...)`.
+
+**SMAppService vs LaunchAgent Single Source of Truth**
+- On macOS 13+, `SMAppService.mainApp.register()` handles startup items. Returning immediately upon success and cleaning up any legacy `~/Library/LaunchAgents/*.plist` prevents dual registration and duplicate instance launches.

@@ -81,3 +81,33 @@ COMMON_FLAGS=(-Osize -wmo -module-name MeMo -sdk "$SDK_PATH" ...)
 **Consequence**: Temperature shows `--` because swap creates garbage values -> falls outside 15-110C range -> filtered out.
 **Actual Root Cause**: SMC returns `flt ` type in **host byte order** (little-endian), NOT big-endian. Original code was correct.
 **Lesson**: DO NOT assume byte order without actual testing. `sp78` uses big-endian (manual parse), but `flt ` uses host-endian. Each data type has its own convention.
+
+---
+
+## 2026-10-14: Network Spike on Interface Transition
+
+**Symptom**: Giant download/upload throughput spike (e.g. GB/s) whenever network interface switches (Wi-Fi <-> Ethernet).
+**Root cause**: Delta calculation subtracted byte counter of new interface from byte counter of previous interface without verifying if the interface had just changed.
+**Fix**: Added `let interfaceChanged = (primaryInterface != cachedActiveInterface)`. If `interfaceChanged` is true, skip delta calculation for that single cycle and set speeds to 0.
+**File**: `StatsEngine.swift` lines 315, 343
+**Lesson**: Network interface cumulative counters cannot be compared across different interface names.
+
+---
+
+## 2026-10-14: Duplicate Launch at Login on macOS 13+
+
+**Symptom**: App launched twice on system reboot on macOS Ventura and newer.
+**Root cause**: `setLaunchAtLogin(enabled: true)` registered with `SMAppService.mainApp`, but did not return, continuing to create a user `LaunchAgent` plist as well.
+**Fix**: Return immediately when `SMAppService.mainApp.register()` succeeds, and proactively remove any legacy `LaunchAgent` plist.
+**File**: `AppDelegate.swift` lines 404-414
+**Lesson**: Modern macOS background services must maintain a single source of truth; use `SMAppService` exclusively on macOS 13+ and reserve `LaunchAgents` solely for older systems.
+
+---
+
+## 2026-10-14: Temperature Average Distorted by Ambient Sensors
+
+**Symptom**: CPU temperature displayed in Menu Bar was significantly lower than actual core heat under heavy load.
+**Root cause**: Sensor grouping lumped all unrecognized `T` sensors into the average alongside actual P-Cores and E-Cores.
+**Fix**: Explicitly calculate menu bar average solely from `P-Cores` and `E-Cores`, only falling back to `Other CPU` if no core sensors are available.
+**File**: `StatsEngine.swift` lines 186-224
+**Lesson**: Keep primary indicators focused strictly on relevant component metrics rather than broad system-wide sensor averages.

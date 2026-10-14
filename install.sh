@@ -9,7 +9,7 @@ PLIST_PATH="${HOME}/Library/LaunchAgents/com.giangdq202.memo.plist"
 
 # Check OS
 if [ "$(uname -s)" != "Darwin" ]; then
-    echo "Error: MacStats is only supported on macOS."
+    echo "Error: ${APP_NAME} is only supported on macOS."
     exit 1
 fi
 

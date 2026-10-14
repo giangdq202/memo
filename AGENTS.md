@@ -145,11 +145,11 @@ Details: [`.agents/rules/swift-coding-standards.md`](.agents/rules/swift-coding-
 | Build configuration | `build.sh` | SDK path, flags |
 
 UserDefaults keys currently in use:
-* `updateInterval` (Double, interval in ms: 250, 500, 1000, 2000, 5000; default: 1000.0)
+* `updateInterval` (Double, interval in seconds: 0.25, 0.5, 1.0, 2.0, 5.0; default: 2.0)
 * `tempUnit` (String, "C" or "F"; default: "C")
 * `showNetworkSpeeds` (Bool, default: true)
 * `showCPUTemperature` (Bool, default: true)
-* `networkUnitMode` (Int, 0: Auto, 1: Bytes, 2: Bits, 3: Mixed; default: 0)
+* `networkUnitMode` (Int, 0: Auto, 1: Binary, 2: Decimal, 3: Bits; default: 0)
 * `LaunchAtLogin` (Bool, default: false)
 
 ---
