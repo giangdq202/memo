@@ -2,10 +2,11 @@
 
 ## Architectural Decisions
 
-### 2026-08-07: SDK Fix
-- **Issue**: Swift 6.2.4 is incompatible with default SDK symlink
-- **Solution**: Hardcode `SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk"` in `build.sh`
-- **Reason**: Swift 6.2.4 (swiftlang-6.2.4.1.4) requires SDK matching the compiler version
+### 2026-10-14: Audit, Cleanup & Configuration Standardization
+- **Agent System**: Migrated `.agent/` configuration to standardized `.agents/` folder with YAML frontmatter rules and no-emoji enforcement.
+- **Hook Paths**: Corrected `.agent` -> `.agents` directory references in `pre-build.sh` and `post-build.sh` hooks.
+- **Layout Constants**: Standardized width constants in `StatusBarView.swift` (`networkSectionWidth = 44.0`, etc.) eliminating hardcoded values in `calculateWidth()` and `draw()`.
+- **Documentation Sync**: Synchronized active `UserDefaults` keys and architecture descriptions across `AGENTS.md`, `GEMINI.md`, and `README.md`.
 
 ### 2026-08-17: Dynamic SMC, Memory Pressure & Network Refinements
 - **Dynamic SMC Keys**: Read total key count (`#KEY`) and index scan for temperature sensors instead of hardcoding key lists.

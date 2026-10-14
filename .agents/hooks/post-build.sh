@@ -1,24 +1,24 @@
 #!/bin/bash
 # Hook: post-build
-# Chạy SAU KHI build thành công
-# Báo cáo kết quả và kích thước binary
+# Run AFTER a successful build.
+# Reports build results and binary size.
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-APP_BUNDLE="MacStats.app"
-BINARY="$APP_BUNDLE/Contents/MacOS/MacStats"
+APP_BUNDLE="MeMo.app"
+BINARY="$APP_BUNDLE/Contents/MacOS/MeMo"
 
 if [ ! -f "$BINARY" ]; then
-    echo "❌ [post-build] Binary not found: $BINARY"
+    echo "[ERR] [post-build] Binary not found: $BINARY"
     exit 1
 fi
 
 echo ""
-echo "📊 [post-build] Build Report"
+echo "[INFO] [post-build] Build Report"
 echo "─────────────────────────────"
 
-# Kích thước binary
+# Binary size
 BINARY_SIZE=$(du -sh "$BINARY" 2>/dev/null | awk '{print $1}')
 APP_SIZE=$(du -sh "$APP_BUNDLE" 2>/dev/null | awk '{print $1}')
 echo "  Binary size : $BINARY_SIZE"
@@ -33,10 +33,10 @@ echo "  Code sign   :"
 codesign -dv "$APP_BUNDLE" 2>&1 | grep -E "Authority|TeamIdentifier|Signature" | sed 's/^/    /' || echo "    (ad-hoc)"
 
 echo "─────────────────────────────"
-echo "✅ Build successful! Run with: open $APP_BUNDLE"
+echo "[OK] Build successful! Run with: open $APP_BUNDLE"
 echo ""
 
-# Lưu build log
-LOG_FILE=".agent/memory/build_history.log"
-mkdir -p ".agent/memory"
+# Save build log
+LOG_FILE=".agents/memory/build_history.log"
+mkdir -p ".agents/memory"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Build OK — binary=$BINARY_SIZE app=$APP_SIZE" >> "$LOG_FILE"
