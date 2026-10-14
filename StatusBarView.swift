@@ -194,6 +194,8 @@ public class UnifiedStatsView: BaseStatsView {
     }
 
     // Cached rendered attributed strings (survive across frames)
+    private var cachedUpArrow: NSAttributedString?
+    private var cachedDownArrow: NSAttributedString?
     private var cachedUpLine: NSAttributedString?
     private var cachedDownLine: NSAttributedString?
     private var cachedCpuLine: NSAttributedString?
@@ -232,15 +234,22 @@ public class UnifiedStatsView: BaseStatsView {
 
     public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double, memPercent: Double, pressureLevel: Int,
                              uploadBytesPerSec: Double, downloadBytesPerSec: Double) {
+        let dispCpu = cpuPercent.rounded()
+        let dispTemp = cpuTemperature > 0 ? cpuTemperature.rounded() : -1.0
+        let dispMemGB = (memGB * 10.0).rounded() / 10.0
+        let dispMemPct = memPercent.rounded()
+        let dispUp = uploadBytesPerSec.rounded()
+        let dispDown = downloadBytesPerSec.rounded()
+
         var changed = false
-        if _cpuPercent != cpuPercent { _cpuPercent = cpuPercent; changed = true }
-        if _cpuTemperature != cpuTemperature { _cpuTemperature = cpuTemperature; changed = true }
+        if _cpuPercent != dispCpu { _cpuPercent = dispCpu; changed = true }
+        if _cpuTemperature != dispTemp { _cpuTemperature = dispTemp; changed = true }
         if _tempUnit != tempUnit { _tempUnit = tempUnit; changed = true }
-        if _memGB != memGB { _memGB = memGB; changed = true }
-        if _memPercent != memPercent { _memPercent = memPercent; changed = true }
+        if _memGB != dispMemGB { _memGB = dispMemGB; changed = true }
+        if _memPercent != dispMemPct { _memPercent = dispMemPct; changed = true }
         if _pressureLevel != pressureLevel { _pressureLevel = pressureLevel; changed = true }
-        if _uploadBPS != uploadBytesPerSec { _uploadBPS = uploadBytesPerSec; changed = true }
-        if _downloadBPS != downloadBytesPerSec { _downloadBPS = downloadBytesPerSec; changed = true }
+        if _uploadBPS != dispUp { _uploadBPS = dispUp; changed = true }
+        if _downloadBPS != dispDown { _downloadBPS = dispDown; changed = true }
         if changed { needsDisplay = true }
     }
 
@@ -271,6 +280,7 @@ public class UnifiedStatsView: BaseStatsView {
         if appearanceChanged || modeChanged {
             cachedIsDark = isDark
             lastMode = mode
+            cachedUpArrow = nil; cachedDownArrow = nil
             cachedUpLine = nil; cachedDownLine = nil; cachedCpuLine = nil; cachedMemLine = nil; cachedTempLine = nil; cachedTempUnitLine = nil
             lastUpBPS = -1; lastDownBPS = -1; lastCpuPct = -1; lastMemGB = -1; lastMemPct = -1; lastPressure = -1; lastTempC = -1; lastTempUnit = ""
         }
@@ -296,9 +306,11 @@ public class UnifiedStatsView: BaseStatsView {
                 cachedUpLine = buildLine(val: upVal, unit: upUnit, color: upColor, dimAlpha: dimAlpha,
                                          valFont: font, uFont: unitFont)
             }
-            let upArrow = NSAttributedString(string: "↑", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
-            upArrow.draw(at: CGPoint(x: currentX, y: line1Y))
-            cachedUpLine!.draw(in: CGRect(x: currentX + 8, y: line1Y, width: netW - 8, height: lineH))
+            if cachedUpArrow == nil {
+                cachedUpArrow = NSAttributedString(string: "↑", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
+            }
+            cachedUpArrow?.draw(at: CGPoint(x: currentX, y: line1Y))
+            cachedUpLine?.draw(in: CGRect(x: currentX + 8, y: line1Y, width: netW - 8, height: lineH))
 
             // Download
             if cachedDownLine == nil || _downloadBPS != lastDownBPS {
@@ -308,9 +320,11 @@ public class UnifiedStatsView: BaseStatsView {
                 cachedDownLine = buildLine(val: downVal, unit: downUnit, color: downColor, dimAlpha: dimAlpha,
                                            valFont: font, uFont: unitFont)
             }
-            let downArrow = NSAttributedString(string: "↓", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
-            downArrow.draw(at: CGPoint(x: currentX, y: line2Y))
-            cachedDownLine!.draw(in: CGRect(x: currentX + 8, y: line2Y, width: netW - 8, height: lineH))
+            if cachedDownArrow == nil {
+                cachedDownArrow = NSAttributedString(string: "↓", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
+            }
+            cachedDownArrow?.draw(at: CGPoint(x: currentX, y: line2Y))
+            cachedDownLine?.draw(in: CGRect(x: currentX + 8, y: line2Y, width: netW - 8, height: lineH))
             
             currentX += netW
         }
@@ -323,7 +337,7 @@ public class UnifiedStatsView: BaseStatsView {
             cachedCpuLine = buildLine(val: cpuVal, unit: "%", color: cpuColor, dimAlpha: dimAlpha,
                                        valFont: font, uFont: cpuMemUnitFont)
         }
-        cachedCpuLine!.draw(in: CGRect(x: currentX, y: line1Y, width: cpuMemW, height: lineH))
+        cachedCpuLine?.draw(in: CGRect(x: currentX, y: line1Y, width: cpuMemW, height: lineH))
 
         // RAM
         if cachedMemLine == nil || _memGB != lastMemGB || _memPercent != lastMemPct || _pressureLevel != lastPressure {
@@ -335,7 +349,7 @@ public class UnifiedStatsView: BaseStatsView {
             cachedMemLine = buildLine(val: memKey, unit: "G", color: memColor, dimAlpha: dimAlpha,
                                        valFont: font, uFont: cpuMemUnitFont)
         }
-        cachedMemLine!.draw(in: CGRect(x: currentX, y: line2Y, width: cpuMemW, height: lineH))
+        cachedMemLine?.draw(in: CGRect(x: currentX, y: line2Y, width: cpuMemW, height: lineH))
         
         currentX += cpuMemW
 
@@ -371,8 +385,8 @@ public class UnifiedStatsView: BaseStatsView {
                 ]))
                 cachedTempUnitLine = s2
             }
-            cachedTempLine!.draw(in: CGRect(x: currentX, y: line1Y, width: tempW, height: lineH))
-            cachedTempUnitLine!.draw(in: CGRect(x: currentX, y: line2Y, width: tempW, height: lineH))
+            cachedTempLine?.draw(in: CGRect(x: currentX, y: line1Y, width: tempW, height: lineH))
+            cachedTempUnitLine?.draw(in: CGRect(x: currentX, y: line2Y, width: tempW, height: lineH))
         }
     }
 }

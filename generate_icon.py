@@ -34,5 +34,7 @@ print("Created iconset files with sips PNG format successfully.")
 result = subprocess.run(["iconutil", "-c", "icns", iconset_dir], capture_output=True, text=True)
 if result.returncode == 0:
     print("Generated AppIcon.icns successfully.")
+    import shutil
+    shutil.rmtree(iconset_dir, ignore_errors=True)
 else:
     print(f"iconutil error: {result.stderr}")

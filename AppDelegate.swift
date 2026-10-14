@@ -399,6 +399,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     private func setLaunchAtLogin(enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "LaunchAtLogin")
+        let plistPath = NSString(string: "~/Library/LaunchAgents/com.giangdq202.memo.plist").expandingTildeInPath
         
         if #available(macOS 13.0, *) {
             do {
@@ -406,6 +407,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     if SMAppService.mainApp.status != .enabled {
                         try SMAppService.mainApp.register()
                     }
+                    // Clean up legacy LaunchAgent plist if present to avoid duplicate launch
+                    if FileManager.default.fileExists(atPath: plistPath) {
+                        try? FileManager.default.removeItem(atPath: plistPath)
+                    }
+                    return
                 } else {
                     if SMAppService.mainApp.status == .enabled {
                         try SMAppService.mainApp.unregister()
@@ -415,8 +421,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 print("SMAppService toggle failed, using LaunchAgent fallback: \(error)")
             }
         }
-        
-        let plistPath = NSString(string: "~/Library/LaunchAgents/com.giangdq202.memo.plist").expandingTildeInPath
         if enabled {
             let execPath = Bundle.main.bundlePath.hasSuffix(".app")
                 ? "\(Bundle.main.bundlePath)/Contents/MacOS/MeMo"

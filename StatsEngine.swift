@@ -65,18 +65,32 @@ public class StatsEngine {
     private var prevCpuInfoCount: mach_msg_type_number_t = 0
     
     // Network delta tracking
+    private let dynamicStore: SCDynamicStore? = SCDynamicStoreCreate(nil, "MeMo" as CFString, nil, nil)
     private var prevNetBytesSent: UInt64 = 0
     private var prevNetBytesRecv: UInt64 = 0
     private var prevNetTime: CFAbsoluteTime = 0
     private var cachedActiveInterface: String = "en0"
     
+    /// Queries SystemConfiguration for the current primary IPv4 network interface.
     private func getPrimaryInterface() -> String {
-        if let dynamicStore = SCDynamicStoreCreate(nil, "MeMo" as CFString, nil, nil),
-           let ipv4 = SCDynamicStoreCopyValue(dynamicStore, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
+        if let store = dynamicStore,
+           let ipv4 = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
            let primaryInterface = ipv4["PrimaryInterface"] as? String {
             return primaryInterface
         }
         return "en0"
+    }
+    
+    /// Appends a debug message to `/tmp/memo_debug.log` when `--debug` is active.
+    private func writeDebugLog(_ message: String) {
+        guard let data = message.data(using: .utf8) else { return }
+        if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? message.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
+        }
     }
     
     // Active temperature keys grouped by cluster (e.g. CPU, GPU)
@@ -185,23 +199,27 @@ public class StatsEngine {
         
         // Calculate CPU average temperature and cluster temperatures
         if !activeTempKeys.isEmpty {
-            var totalSum: Double = 0.0
-            var totalCount = 0
+            let clusterOrder = ["P-Cores", "E-Cores", "GPU", "Other CPU"]
+            var coreSum: Double = 0.0
+            var coreCount = 0
+            var fallbackSum: Double = 0.0
+            var fallbackCount = 0
             let smc = SMC.shared
             
-            for (groupName, keys) in activeTempKeys {
+            for groupName in clusterOrder {
+                guard let keys = activeTempKeys[groupName] else { continue }
                 var groupSum: Double = 0.0
                 var groupCount = 0
                 for key in keys {
                     if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
                         groupSum += val
                         groupCount += 1
-                        
-                        // We only include CPU cores in the overall average to keep
-                        // the menu bar temperature consistent with actual CPU heat
-                        if groupName != "GPU" {
-                            totalSum += val
-                            totalCount += 1
+                        if groupName == "P-Cores" || groupName == "E-Cores" {
+                            coreSum += val
+                            coreCount += 1
+                        } else if groupName == "Other CPU" {
+                            fallbackSum += val
+                            fallbackCount += 1
                         }
                     }
                 }
@@ -210,23 +228,16 @@ public class StatsEngine {
                 }
             }
             
-            // Sort clusters for consistent display (P-Cores, E-Cores, GPU...)
-            stats.tempClusters.sort { $0.name < $1.name }
-            
-            if totalCount > 0 {
-                stats.temperature = totalSum / Double(totalCount)
+            if coreCount > 0 {
+                stats.temperature = coreSum / Double(coreCount)
+            } else if fallbackCount > 0 {
+                stats.temperature = fallbackSum / Double(fallbackCount)
             }
         }
         
         if isDebugMode {
             let log = "[DEBUG CPU] Usage: \(String(format: "%.1f", stats.usagePercent))% | Cores: \(stats.coreCount) | Temp: \(String(format: "%.1f", stats.temperature))°C | Clusters: \(stats.tempClusters.count)\n"
-            if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
-                handle.seekToEndOfFile()
-                handle.write(log.data(using: .utf8)!)
-                handle.closeFile()
-            } else {
-                try? log.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
-            }
+            writeDebugLog(log)
         }
         
         return stats
@@ -280,13 +291,7 @@ public class StatsEngine {
             let speculativeGB = Double(speculative) / 1_073_741_824.0
             let purgeableGB = Double(purgeable) / 1_073_741_824.0
             let log = "[DEBUG RAM] Used: \(String(format: "%.1f", stats.usedGB))GB / \(String(format: "%.1f", stats.totalGB))GB | Pressure: \(stats.pressureLevel) | active:\(String(format: "%.1f", activeGB)) wired:\(String(format: "%.1f", wiredGB)) compressed:\(String(format: "%.1f", compressedGB)) speculative:\(String(format: "%.1f", speculativeGB)) purgeable:\(String(format: "%.1f", purgeableGB))\n"
-            if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
-                handle.seekToEndOfFile()
-                handle.write(log.data(using: .utf8)!)
-                handle.closeFile()
-            } else {
-                try? log.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
-            }
+            writeDebugLog(log)
         }
         
         return stats
@@ -304,9 +309,12 @@ public class StatsEngine {
         
         var currentBytesSent: UInt64 = 0
         var currentBytesRecv: UInt64 = 0
-        var foundEnInterface = false
         
         let primaryInterface = getPrimaryInterface()
+        let interfaceChanged = (primaryInterface != cachedActiveInterface)
+        if interfaceChanged {
+            cachedActiveInterface = primaryInterface
+        }
         
         var ptr: UnsafeMutablePointer<ifaddrs>? = firstAddr
         while let curr = ptr {
@@ -315,26 +323,14 @@ public class StatsEngine {
             let isRunning = (flags & IFF_RUNNING) != 0
             let isLoopback = (flags & IFF_LOOPBACK) != 0
             
-            if isUp && isRunning && !isLoopback {
-                if curr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_LINK) {
-                    if let namePtr = curr.pointee.ifa_name {
-                        let nameStr = String(cString: namePtr)
-                        if nameStr == primaryInterface {
-                            if let data = curr.pointee.ifa_data {
-                                let ifData = data.assumingMemoryBound(to: if_data.self)
-                                currentBytesRecv += UInt64(ifData.pointee.ifi_ibytes)
-                                currentBytesSent += UInt64(ifData.pointee.ifi_obytes)
-                                
-                                if !foundEnInterface {
-                                    foundEnInterface = true
-                                    if nameStr != cachedActiveInterface {
-                                        cachedActiveInterface = nameStr
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            if isUp && isRunning && !isLoopback,
+               curr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_LINK),
+               let namePtr = curr.pointee.ifa_name,
+               strcmp(namePtr, primaryInterface) == 0,
+               let data = curr.pointee.ifa_data {
+                let ifData = data.assumingMemoryBound(to: if_data.self)
+                currentBytesRecv += UInt64(ifData.pointee.ifi_ibytes)
+                currentBytesSent += UInt64(ifData.pointee.ifi_obytes)
             }
             ptr = curr.pointee.ifa_next
         }
@@ -344,7 +340,7 @@ public class StatsEngine {
         stats.activeInterface = cachedActiveInterface
         
         let now = CFAbsoluteTimeGetCurrent()
-        if prevNetTime > 0 {
+        if prevNetTime > 0 && !interfaceChanged {
             let dt = now - prevNetTime
             if dt > 0 {
                 // When the total drops (e.g. an interface disconnected and its
@@ -372,13 +368,7 @@ public class StatsEngine {
 
         if isDebugMode {
             let log = "[DEBUG NET] Interface: \(stats.activeInterface) | Up: \(String(format: "%.0f", stats.uploadBytesPerSec)) B/s | Down: \(String(format: "%.0f", stats.downloadBytesPerSec)) B/s\n"
-            if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
-                handle.seekToEndOfFile()
-                handle.write(log.data(using: .utf8)!)
-                handle.closeFile()
-            } else {
-                try? log.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
-            }
+            writeDebugLog(log)
         }
 
         return stats
@@ -402,6 +392,7 @@ public class StatsEngine {
         // -a: all users  -x: include processes with no controlling tty (GUI apps).
         // `comm` (full executable path) must be last since it can contain spaces.
         task.arguments = ["-axo", "pcpu=,rss=,uid=,comm="]
+        task.environment = ["LC_ALL": "C"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
@@ -421,9 +412,10 @@ public class StatsEngine {
             let name = Self.appName(fromPath: comm)
             guard !name.isEmpty, name != selfName else { continue }
 
-            if byName[name] != nil {
-                byName[name]!.cpuPercent += cpu
-                byName[name]!.memoryBytes += rssKB * 1024
+            if var existing = byName[name] {
+                existing.cpuPercent += cpu
+                existing.memoryBytes += rssKB * 1024
+                byName[name] = existing
             } else {
                 byName[name] = ProcessUsage(name: name, cpuPercent: cpu, memoryBytes: rssKB * 1024)
             }

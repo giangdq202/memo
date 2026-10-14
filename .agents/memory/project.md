@@ -2,6 +2,14 @@
 
 ## Architectural Decisions
 
+### 2026-10-14: Core Optimizations & Logic Fixes
+- **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
+- **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.
+- **Network Transition Spike Guard**: Suppressed delta throughput calculation when `PrimaryInterface` transitions.
+- **Subprocess Locale & Safe Unwrap**: Enforced `LC_ALL=C` on `/bin/ps` subprocess, consolidated debug file logging to `writeDebugLog`, and removed force unwraps (`!`) in `StatsEngine.swift` and `StatusBarView.swift`.
+- **Menu Bar Render Optimization**: Cached `NSAttributedString` instances for `↑` and `↓` arrows; rounded values to display precision before triggering `needsDisplay`.
+- **Launch at Login Consolidation**: Streamlined `setLaunchAtLogin` on macOS 13+ to return immediately upon successful `SMAppService` registration and clean up legacy plist files.
+
 ### 2026-10-14: Audit, Cleanup & Configuration Standardization
 - **Agent System**: Migrated `.agent/` configuration to standardized `.agents/` folder with YAML frontmatter rules and no-emoji enforcement.
 - **Hook Paths**: Corrected `.agent` -> `.agents` directory references in `pre-build.sh` and `post-build.sh` hooks.

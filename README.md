@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/giangdq202/memo/main/uninstall.sh |
   - **Show CPU Temperature**: Toggle the visibility of the CPU temperature column.
   - **Launch at Login**: Easily toggle automatic startup. (Seamlessly uses macOS 13+ `SMAppService`, with automatic fallbacks to LaunchAgents plist for older systems).
   - **Update Interval**: Customize how often data refreshes (250ms, 500ms, 1s, 2s, or 5s).
-  - **Network Display Units**: Choose between Auto, Bytes/s (B/s, KB/s, MB/s), Bits/s (bps, Kbps, Mbps), or Mixed mode.
+  - **Network Display Units**: Choose between Auto (B, K, M, G), Binary (B, KiB, MiB, GiB), Decimal (B, KB, MB, GB), or Bits (bps, Kbps, Mbps).
   - **Temperature Unit**: Switch effortlessly between Celsius and Fahrenheit.
   - **GitHub Repository**: Direct link to the source code.
   - **Quit MeMo**: Safely close the app.
