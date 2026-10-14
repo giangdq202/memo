@@ -45,14 +45,15 @@ curl -fsSL https://raw.githubusercontent.com/giangdq202/memo/main/uninstall.sh |
   - **Show Network Speeds**: Toggle the visibility of the network speeds column.
   - **Show CPU Temperature**: Toggle the visibility of the CPU temperature column.
   - **Launch at Login**: Easily toggle automatic startup. (Seamlessly uses macOS 13+ `SMAppService`, with automatic fallbacks to LaunchAgents plist for older systems).
-  - **Update Interval**: Customize how often data refreshes (1s, 2s, or 5s).
+  - **Update Interval**: Customize how often data refreshes (250ms, 500ms, 1s, 2s, or 5s).
+  - **Network Display Units**: Choose between Auto, Bytes/s (B/s, KB/s, MB/s), Bits/s (bps, Kbps, Mbps), or Mixed mode.
   - **Temperature Unit**: Switch effortlessly between Celsius and Fahrenheit.
   - **GitHub Repository**: Direct link to the source code.
   - **Quit MeMo**: Safely close the app.
-- **Dynamic SMC Temperature Scanning**: On startup, it automatically discovers active SMC temperature sensors for both Intel and Apple Silicon (M1/M2/M3/M4/M5) chips including efficiency cores, performance cores, and general sensors to calculate a highly accurate real-time average.
+- **Dynamic SMC Temperature Scanning**: On startup, it automatically discovers active SMC temperature sensors for Apple Silicon (M1/M2/M3/M4/M5) chips including efficiency cores, performance cores, and general sensors to calculate a highly accurate real-time average.
 - **Deep Performance & Memory Optimizations**:
   - Runs entirely as a background accessory (`LSUIElement`). It stays out of your Dock and won't clutter your Command-Tab app switcher.
-  - Actively prevents memory fragmentation by calling `malloc_zone_pressure_relief` on startup and every 30 seconds thereafter.
+  - Monitors system memory pressure via `kern.memorystatus_vm_pressure_level` sysctl to reflect genuine macOS memory load.
   - Implements a smart 25% timer tolerance, allowing macOS to coalesce background tasks and drastically save battery life.
 - **Automated CI/CD Workflows**: A built-in GitHub Actions pipeline automatically compiles the `.app`, increments semantic version numbers, and publishes new GitHub Releases.
 
@@ -72,7 +73,7 @@ If you prefer to compile it yourself from source:
 
 2. **Build & install in one step (recommended).** When run from a local
    checkout, `install.sh` detects the source and builds from it instead of
-   downloading a release compiling a universal (Apple Silicon + Intel) binary
+   downloading a release, compiling an optimized `arm64` (Apple Silicon) binary
    via `build.sh`, installing it to `/Applications`, and launching it:
    ```bash
    ./install.sh
@@ -103,9 +104,9 @@ This project employs several uncommon and highly optimized techniques for macOS 
 
 1. **Zero-Xcode App Bundling**: This app is built entirely without an Xcode project file. Instead, it uses a custom bash script (`build.sh`) that invokes the `swiftc` compiler directly with aggressive size optimizations (`-Osize`, `-wmo`, `-dead_strip`). It then manually constructs the `.app` bundle structure, proving that you can build native macOS UI apps with just a terminal and text editor.
 2. **Direct Low-Level C APIs**: To achieve near-zero CPU overhead, the app bypasses high-level `Foundation` wrappers. It directly calls Mach kernel APIs (`host_processor_info`, `host_statistics64`) and BSD socket APIs (`getifaddrs`) from Swift using raw memory pointers.
-3. **Zero-Allocation String Parsing**: Inside the network polling loop, instead of allocating a Swift `String` to check if an interface is Ethernet/Wi-Fi (e.g., `name.hasPrefix("en")`), the engine compares raw C-string bytes directly (`namePtr.pointee == 0x65 && namePtr.advanced(by: 1).pointee == 0x6e`). This completely eliminates memory allocation in the high-frequency polling loop.
-4. **Dynamic SMC Discovery via IOKit**: Instead of hardcoding temperature sensor keys or using undocumented private frameworks, the app uses IOKit to dynamically probe the System Management Controller (SMC) on startup. It checks a vast array of known Apple Silicon and Intel keys, automatically discovering which ones are active on the host machine.
-5. **Active Memory Pressure Relief**: Background apps that run indefinitely often suffer from memory fragmentation. This app actively mitigates this by manually calling low-level memory management functions (like `malloc_zone_pressure_relief`) to aggressively keep the background memory footprint tight.
+3. **Primary Interface Routing via SCDynamicStore**: Rather than blindly summing all network interfaces, the engine queries `SCDynamicStore` for the primary active IPv4 interface (e.g. `en0`) and applies a bandwidth spike filter to prevent artificial spikes on interface reconnection.
+4. **Dynamic SMC Discovery via IOKit**: Instead of hardcoding temperature sensor keys, the app dynamically discovers sensors via SMC key count (`#KEY`) and index queries, sorting them into P-Cores, E-Cores, GPU, and CPU clusters.
+5. **System Memory Pressure Tracking**: Uses `kern.memorystatus_vm_pressure_level` sysctl and computes active application memory (`active + speculative - purgeable`) to closely align with macOS Activity Monitor metrics.
 
 ---
 

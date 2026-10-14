@@ -1,29 +1,27 @@
 ---
 name: custom-threshold-feature
-description: >
-  Hướng dẫn implement tính năng custom color thresholds cho mac-stats.
-  Kích hoạt skill này khi người dùng muốn: thêm cảnh báo màu theo mức (%),
-  thêm settings để tùy chỉnh ngưỡng CPU/RAM/Temperature, hoặc thay đổi
-  hệ thống màu từ gradient sang discrete (xanh/vàng/đỏ).
+description: Step-by-step guide to implement custom color thresholds for CPU, RAM, and Temperature in MeMo. Activate when the user wants to add color-coded warnings, configure threshold levels, or switch from gradient to discrete colors.
 ---
 
 # Skill: Custom Color Threshold Feature
 
-## Mục Tiêu
-Thay thế hệ thống màu gradient liên tục hiện tại bằng 3 màu rõ ràng
-với ngưỡng do người dùng tự cấu hình.
+## Goal
 
-## Kiến Trúc Thay Đổi
+Replace the current continuous color gradient with 3 discrete colors (green / yellow / red) at user-configurable thresholds.
+
+## Architecture
 
 ```
-UserDefaults ←→ AppDelegate (settings) → StatusBarView (rendering)
-                     ↑
-              Menu Settings UI
+UserDefaults <-> AppDelegate (settings) -> StatusBarView (rendering)
+                      ^
+               Menu Settings UI
 ```
 
-## Bước 1: Thêm Threshold Properties vào AppDelegate.swift
+---
 
-Thêm sau `showCPUTemperature` property (~dòng 341):
+## Step 1: Add Threshold Properties To AppDelegate.swift
+
+Add after the `showCPUTemperature` property (~line 341):
 
 ```swift
 // MARK: - Custom Thresholds
@@ -49,24 +47,29 @@ private var memCriticalThreshold: Double {
 }
 ```
 
-## Bước 2: Truyền Threshold Xuống StatusBarView
+---
 
-Sửa `updateStats()` trong AppDelegate để pass thresholds:
+## Step 2: Pass Thresholds To StatusBarView
+
+Modify `updateStats()` in AppDelegate:
+
 ```swift
 statsView.updateValues(
     cpuPercent: currentCpuStats.usagePercent,
-    cpuWarn: cpuWarnThreshold,        // thêm
-    cpuCritical: cpuCriticalThreshold, // thêm
+    cpuWarn: cpuWarnThreshold,
+    cpuCritical: cpuCriticalThreshold,
     memPercent: currentMemStats.usedPercent,
-    memWarn: memWarnThreshold,         // thêm
-    memCritical: memCriticalThreshold, // thêm
+    memWarn: memWarnThreshold,
+    memCritical: memCriticalThreshold,
     ...
 )
 ```
 
-## Bước 3: Sửa StatusBarView.swift
+---
 
-Thêm stored properties:
+## Step 3: Add Color Function To StatusBarView.swift
+
+Add stored properties:
 ```swift
 private var _cpuWarn: Double = 50.0
 private var _cpuCritical: Double = 80.0
@@ -74,10 +77,15 @@ private var _memWarn: Double = 70.0
 private var _memCritical: Double = 90.0
 ```
 
-Thêm hàm màu mới (thay thế `colorForUsage`):
+Add the color function (replaces `colorForUsage`):
 ```swift
-/// Trả về màu dựa trên threshold rõ ràng (không gradient).
-/// Xanh = bình thường, Vàng = cảnh báo, Đỏ = nguy hiểm.
+/// Returns a color based on discrete thresholds — no gradient.
+/// Green = normal, Yellow = warning, Red = critical.
+/// - Parameters:
+///   - value: The usage percentage (0-100)
+///   - warn: Warn threshold
+///   - critical: Critical threshold
+///   - isDark: True if in Dark Mode
 private func colorForThreshold(_ value: Double, warn: Double, critical: Double, isDark: Bool) -> NSColor {
     if value >= critical {
         return isDark ? NSColor(calibratedHue: 0.0, saturation: 0.7, brightness: 1.0, alpha: 1.0)
@@ -92,16 +100,16 @@ private func colorForThreshold(_ value: Double, warn: Double, critical: Double, 
 }
 ```
 
-## Bước 4: Thêm Settings Submenu vào AppDelegate.showMenu()
+---
+
+## Step 4: Add Settings Submenu To AppDelegate.showMenu()
 
 ```swift
-// Thêm sau tempUnitItem:
 let thresholdSubmenu = NSMenu()
 
-// CPU thresholds
 for (label, warn, crit) in [("Conservative (50/80%)", 50.0, 80.0),
-                              ("Balanced (60/85%)", 60.0, 85.0),
-                              ("Aggressive (70/90%)", 70.0, 90.0)] {
+                              ("Balanced (60/85%)",     60.0, 85.0),
+                              ("Aggressive (70/90%)",   70.0, 90.0)] {
     let item = NSMenuItem(title: label, action: #selector(changeCPUThreshold(_:)), keyEquivalent: "")
     item.target = self
     item.representedObject = [warn, crit]
@@ -114,9 +122,12 @@ thresholdItem.submenu = thresholdSubmenu
 menu.addItem(thresholdItem)
 ```
 
-## Kiểm Tra Sau Khi Implement
-1. Build: `bash build.sh`
-2. Mở menu bar → click icon
-3. Thấy "CPU Alert Levels" submenu
-4. Chọn preset → màu CPU thay đổi ngay
-5. Quit và reopen → preset vẫn giữ nguyên
+---
+
+## Verification Checklist
+
+- [ ] `bash build.sh` passes with no new warnings
+- [ ] Click menu bar icon → "CPU Alert Levels" submenu is visible
+- [ ] Selecting a preset changes the CPU color immediately
+- [ ] Quit and reopen → selected preset is retained
+- [ ] Dark mode and Light mode both render correct colors

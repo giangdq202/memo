@@ -165,7 +165,7 @@ private let unitFont = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .bold)
 private let cpuMemUnitFont = NSFont.systemFont(ofSize: 9.0, weight: .bold)
 private let tempValFont = NSFont.monospacedDigitSystemFont(ofSize: 10.0, weight: .bold)
 
-private let networkSectionWidth: CGFloat = 36.0
+private let networkSectionWidth: CGFloat = 44.0
 private let cpuMemWidthWithNetwork: CGFloat = 40.0
 private let cpuMemWidthWithoutNetwork: CGFloat = 38.0
 private let temperatureSectionWidth: CGFloat = 21.0
@@ -186,9 +186,9 @@ public class UnifiedStatsView: BaseStatsView {
     public var showTemperature: Bool = true
 
     public static func calculateWidth(showNetwork: Bool, showTemperature: Bool) -> CGFloat {
-        let netW: CGFloat = showNetwork ? 44.0 : 0.0
-        let cpuMemW: CGFloat = showNetwork ? 40.0 : 38.0
-        let tempW: CGFloat = showTemperature ? 21.0 : 0.0
+        let netW: CGFloat = showNetwork ? networkSectionWidth : 0.0
+        let cpuMemW: CGFloat = showNetwork ? cpuMemWidthWithNetwork : cpuMemWidthWithoutNetwork
+        let tempW: CGFloat = showTemperature ? temperatureSectionWidth : 0.0
         
         return netW + cpuMemW + tempW
     }
@@ -281,9 +281,9 @@ public class UnifiedStatsView: BaseStatsView {
         let line1Y: CGFloat = 11.0
         let line2Y: CGFloat = 1.0
         let lineH: CGFloat = 11.0
-        let netW: CGFloat = showNetwork ? 44.0 : 0.0
-        let cpuMemW: CGFloat = showNetwork ? 40.0 : 38.0
-        let tempW: CGFloat = showTemperature ? 21.0 : 0.0
+        let netW: CGFloat = showNetwork ? networkSectionWidth : 0.0
+        let cpuMemW: CGFloat = showNetwork ? cpuMemWidthWithNetwork : cpuMemWidthWithoutNetwork
+        let tempW: CGFloat = showTemperature ? temperatureSectionWidth : 0.0
 
         var currentX: CGFloat = 0.0
 
