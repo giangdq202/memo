@@ -106,9 +106,9 @@ public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, m
     case .auto:
         val = bytesPerSec
         tiers = [
-            (1000.0, 1.0, "B", "B/s"),
-            (1024.0 * 1000.0, 1024.0, "K", "K/s"),
-            (1024.0 * 1000000.0, 1048576.0, "M", "M/s"),
+            (1024.0, 1.0, "B", "B/s"),
+            (1024.0 * 1024.0, 1024.0, "K", "K/s"),
+            (1024.0 * 1048576.0, 1048576.0, "M", "M/s"),
             (Double.infinity, 1073741824.0, "G", "G/s"),
         ]
     case .binary:
