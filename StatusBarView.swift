@@ -153,6 +153,23 @@ public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, m
     return (String(format: "%.0f", val), lastUnit)
 }
 
+/// Shared temperature representation. `formatTemperature` returns the full
+/// value plus unit (for menu rows); `formatTemperatureValue` returns only the
+/// numeric string (for the menu bar, which draws the unit separately).
+private func convertedTemperature(_ celsius: Double, unit: String) -> Double {
+    return unit == "F" ? celsius * 1.8 + 32.0 : celsius
+}
+
+public func formatTemperature(_ celsius: Double, unit: String) -> String {
+    guard celsius > 0 else { return "--" }
+    return String(format: "%.0f°%@", convertedTemperature(celsius, unit: unit), unit)
+}
+
+public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
+    guard celsius > 0 else { return "--" }
+    return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
+}
+
 // MARK: - Static constants (allocated once for app lifetime)
 private let rightAlignStyle: NSParagraphStyle = {
     let style = NSMutableParagraphStyle()
@@ -356,16 +373,7 @@ public class UnifiedStatsView: BaseStatsView {
 
         if showTemperature {
             // Temperature
-            let tempVal: String
-            if _cpuTemperature > 0 {
-                if _tempUnit == "F" {
-                    tempVal = String(format: "%.0f", _cpuTemperature * 1.8 + 32.0)
-                } else {
-                    tempVal = String(format: "%.0f", _cpuTemperature)
-                }
-            } else {
-                tempVal = "--"
-            }
+            let tempVal = formatTemperatureValue(_cpuTemperature, unit: _tempUnit)
             
             if cachedTempLine == nil || _cpuTemperature != lastTempC || _tempUnit != lastTempUnit {
                 lastTempC = _cpuTemperature
