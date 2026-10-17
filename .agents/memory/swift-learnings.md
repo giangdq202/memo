@@ -131,3 +131,20 @@
 
 **Reusing File Handles**
 - Keep a single `FileHandle` open for append-only debug logging; close it in `deinit`. This avoids syscall and allocation overhead on every log line. If the file may be deleted or rotated externally, check existence before writing and reopen, because writes to an unlinked file succeed silently.
+
+---
+
+## Session 6 - 2026-10-17: Follow-up Rescan & Menu Caching
+
+### Concepts Learned
+
+**Repeatable Discovery**
+- A one-shot hardware scan at init is fragile when sensors can sleep or appear later. Re-run the scan on a timer, merge new keys into the existing set, and keep old keys so the UI does not flicker.
+
+**Process EOF Semantics**
+- `readDataToEndOfFile()` returns after the child closes its stdout, which for a short-lived tool like `ps` means it has already exited. An explicit `waitUntilExit()` is redundant; the local `Process` value is released at function exit.
+
+**NSMenuItem Reuse**
+- `NSMenuItem` can belong to only one `NSMenu` at a time. To reuse a cached item, remove it from its previous menu before adding it to the new one.
+- Cache only items whose content does not depend on live data (About, Settings, Quit); keep dynamic rows fresh.
+- Centralize state updates for cached checkmark items so submenus stay in sync without a full rebuild.

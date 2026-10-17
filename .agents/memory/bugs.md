@@ -121,3 +121,13 @@ COMMON_FLAGS=(-Osize -wmo -module-name MeMo -sdk "$SDK_PATH" ...)
 **Fix**: Bind `ifa_addr` with `let` before reading `sa_family`; free any non-nil `cpuInfo` buffer before returning on `KERN_SUCCESS` failure.
 **File**: `StatsEngine.swift` network and CPU sampling paths
 **Lesson**: Check every C pointer before dereferencing it, and free resources on every early-return path.
+
+---
+
+## 2026-10-17: Sleeping Temperature Sensors Never Reappeared
+
+**Symptom**: A temperature sensor that was inactive at app launch stayed missing even after it became active later.
+**Root cause**: `scanActiveTempKeys()` ran only in `init`, so keys filtered out at that moment were never reconsidered.
+**Fix**: Re-scan every 30 seconds and merge newly active keys into the existing groups without removing known keys.
+**File**: `StatsEngine.swift` temperature sampling path
+**Lesson**: Discovery scans that depend on transient device state must be repeatable, not one-shot.
