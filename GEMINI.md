@@ -149,6 +149,9 @@ UserDefaults keys currently in use:
 * `tempUnit` (String, "C" or "F"; default: "C")
 * `showCPUTemperature` (Bool, default: true)
 * `LaunchAtLogin` (Bool, default: false)
+* `cpuAlertThreshold` (Double, 0 = off; preset levels 60/70/80/90/95; default: 0)
+* `ramAlertThreshold` (Double, 0 = off; preset levels 70/80/85/90/95; default: 0)
+* `tempAlertThreshold` (Double, 0 = off; preset levels 70/80/90/100; default: 0)
 
 ---
 
