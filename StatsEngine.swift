@@ -154,7 +154,16 @@ public class StatsEngine {
         var cpuInfoCount: mach_msg_type_number_t = 0
         
         let result = host_processor_info(hostPort, PROCESSOR_CPU_LOAD_INFO, &numCPUs, &cpuInfo, &cpuInfoCount)
-        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else {
+        if result != KERN_SUCCESS {
+            if let cpuInfo = cpuInfo {
+                let size = MemoryLayout<integer_t>.size * Int(cpuInfoCount)
+                if size > 0 {
+                    vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vm_size_t(size))
+                }
+            }
+            return stats
+        }
+        guard let cpuInfo = cpuInfo else {
             return stats
         }
         
@@ -324,7 +333,8 @@ public class StatsEngine {
             let isLoopback = (flags & IFF_LOOPBACK) != 0
             
             if isUp && isRunning && !isLoopback,
-               curr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_LINK),
+               let addr = curr.pointee.ifa_addr,
+               addr.pointee.sa_family == UInt8(AF_LINK),
                let namePtr = curr.pointee.ifa_name,
                strcmp(namePtr, primaryInterface) == 0,
                let data = curr.pointee.ifa_data {
