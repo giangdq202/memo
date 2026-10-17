@@ -2,6 +2,11 @@
 
 ## Architectural Decisions
 
+### 2026-10-17: Ops Hardening & Smoke Tests
+- **Release Versioning**: Replaced the fragile `sed` replacement in `release.yml` with `plutil -replace CFBundleShortVersionString` plus a `plutil -lint` check.
+- **Smoke Tests**: Added `scripts/smoke-test.sh`, which compiles a temporary harness from `SMC.swift`, `StatsEngine.swift`, and `StatusBarView.swift`, then verifies CPU/memory sampling, top-process sampling, and the shared formatters.
+- **CI**: `.github/workflows/ci.yml` now runs the smoke test after verifying the signed app bundle.
+
 ### 2026-10-17: Network Monitoring Removed
 - **Scope**: MeMo is now a resource monitor only (CPU, memory, temperature, processes). All network sampling, display, settings, and formatting were removed.
 - **StatsEngine**: Deleted `NetworkStats`, `fetchNetworkStats()`, `getPrimaryInterface()`, the `SCDynamicStore` reference, and all network delta state.
