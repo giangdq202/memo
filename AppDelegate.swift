@@ -633,19 +633,34 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     @objc private func changeCpuAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         cpuAlertThreshold = level
-        if level > 0 { requestNotificationPermission() }
+        if level > 0 {
+            requestNotificationPermission { [weak self] in
+                self?.cpuAlertThreshold = 0
+                self?.updateStaticMenuStates()
+            }
+        }
     }
 
     @objc private func changeRamAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         ramAlertThreshold = level
-        if level > 0 { requestNotificationPermission() }
+        if level > 0 {
+            requestNotificationPermission { [weak self] in
+                self?.ramAlertThreshold = 0
+                self?.updateStaticMenuStates()
+            }
+        }
     }
 
     @objc private func changeTempAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         tempAlertThreshold = level
-        if level > 0 { requestNotificationPermission() }
+        if level > 0 {
+            requestNotificationPermission { [weak self] in
+                self?.tempAlertThreshold = 0
+                self?.updateStaticMenuStates()
+            }
+        }
     }
 
     private func checkAlerts() {
@@ -686,8 +701,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         notificationCenter.add(request)
     }
 
-    private func requestNotificationPermission() {
-        notificationCenter.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    private func requestNotificationPermission(onDenied rollback: @escaping () -> Void) {
+        notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard !granted else { return }
+            DispatchQueue.main.async { rollback() }
+        }
     }
 
     public func userNotificationCenter(_ center: UNUserNotificationCenter,
