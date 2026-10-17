@@ -97,12 +97,12 @@ public func colorForNetworkSpeed(_ bytesPerSec: Double, isDark: Bool, defaultCol
 ///   - bytesPerSec: Raw bytes/second from StatsEngine.
 ///   - shortUnit: When true, returns short units ("B","K","M","G") for the
 ///     compact menu bar. When false, returns full units ("B/s","K/s","M/s"…).
-public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false) -> (val: String, unit: String) {
-    let mode = NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto
+public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode? = nil) -> (val: String, unit: String) {
+    let resolvedMode = mode ?? NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto
     let val: Double
     let tiers: [(threshold: Double, divisor: Double, short: String, full: String)]
     
-    switch mode {
+    switch resolvedMode {
     case .auto:
         val = bytesPerSec
         tiers = [
@@ -184,6 +184,7 @@ public class UnifiedStatsView: BaseStatsView {
 
     public var showNetwork: Bool = true
     public var showTemperature: Bool = true
+    public var networkUnitMode: NetworkUnitMode = .auto
 
     public static func calculateWidth(showNetwork: Bool, showTemperature: Bool) -> CGFloat {
         let netW: CGFloat = showNetwork ? networkSectionWidth : 0.0
@@ -254,7 +255,7 @@ public class UnifiedStatsView: BaseStatsView {
     }
 
     private func formatSpeed(_ bytesPerSec: Double) -> (val: String, unit: String) {
-        return formatNetworkSpeed(bytesPerSec, shortUnit: true)
+        return formatNetworkSpeed(bytesPerSec, shortUnit: true, mode: networkUnitMode)
     }
 
     private func buildLine(val: String, unit: String, color: NSColor, dimAlpha: CGFloat,
@@ -274,7 +275,7 @@ public class UnifiedStatsView: BaseStatsView {
 
         let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let appearanceChanged = (isDark != cachedIsDark)
-        let mode = NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto
+        let mode = networkUnitMode
         let modeChanged = (mode != lastMode)
         
         if appearanceChanged || modeChanged {

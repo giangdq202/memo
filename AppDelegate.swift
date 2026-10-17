@@ -48,6 +48,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         statsView.showNetwork = showNetworkSpeeds
         statsView.showTemperature = showCPUTemperature
+        statsView.networkUnitMode = networkUnitMode
         updateStatusItemWidth()
         
         if let button = statusItem.button {
@@ -507,6 +508,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateUIForSettingsChange() {
         statsView.showNetwork = showNetworkSpeeds
         statsView.showTemperature = showCPUTemperature
+        statsView.networkUnitMode = networkUnitMode
         updateStatusItemWidth()
         statsView.needsDisplay = true
     }
