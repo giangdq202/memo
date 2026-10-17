@@ -2,6 +2,13 @@
 
 ## Architectural Decisions
 
+### 2026-10-17: Network Monitoring Removed
+- **Scope**: MeMo is now a resource monitor only (CPU, memory, temperature, processes). All network sampling, display, settings, and formatting were removed.
+- **StatsEngine**: Deleted `NetworkStats`, `fetchNetworkStats()`, `getPrimaryInterface()`, the `SCDynamicStore` reference, and all network delta state.
+- **StatusBarView**: Removed `NetworkUnitMode`, `formatNetworkSpeed`, `colorForNetworkSpeed`, the network column, and the network-specific width constants.
+- **AppDelegate**: Removed `currentNetStats`, the network summary row, `Show Network Speeds`, the Network Unit submenu, and the related action handlers.
+- **Docs**: Updated `README.md`, `AGENTS.md`, and `GEMINI.md` to drop network keys and known issues.
+
 ### 2026-10-17: Correctness Hardening & Per-Tick Efficiency
 - **Interface Enumeration Safety**: Guarded `ifa_addr` before dereferencing it in `getifaddrs` traversal, eliminating a possible crash when an interface disappears between enumeration and inspection.
 - **Mach Resource Hygiene**: Deallocated the `mach_host_self()` send right in `StatsEngine.deinit` and freed `host_processor_info` buffers on partial failure.

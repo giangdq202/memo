@@ -199,3 +199,21 @@
 
 **Shared Formatting Across Files**
 - Small formatters like `formatCPU` and `formatMemory` belong next to the other shared formatters (`formatNetworkSpeed`, `formatTemperature`) so any layer of the app can reuse them without duplicating format strings.
+
+---
+
+## Session 10 - 2026-10-17: Removing a Feature Cleanly
+
+### Concepts Learned
+
+**Feature Removal Checklist**
+- Remove the full vertical slice: data model (`NetworkStats`), sampling function, cached state, UI properties, drawing code, menu items, settings keys, and helper formatters.
+- Re-run `grep` for the feature name after each removal pass to catch leftovers in docs, skills, and config.
+- Update `README.md`, `AGENTS.md`, and `GEMINI.md` so the documented feature set matches the binary.
+
+**Simplifying Layout After Removal**
+- Deleting a menu bar column let the two remaining sections share a single width constant and drop the `showNetwork` parameter from `calculateWidth`.
+- Removing the network column also removed the only consumer of `unitFont`, so the font constant was deleted too.
+
+**Safe Large Refactor**
+- Do the removal per file, build after each file, and keep the change on its own branch so it can be reverted independently if needed.
