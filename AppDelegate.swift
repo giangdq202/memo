@@ -470,7 +470,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         UserDefaults.standard.removeObject(forKey: "LaunchAtLogin")
-        UserDefaults.standard.synchronize()
     }
     
     private func setLaunchAtLogin(enabled: Bool) {
