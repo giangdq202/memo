@@ -217,3 +217,19 @@
 
 **Safe Large Refactor**
 - Do the removal per file, build after each file, and keep the change on its own branch so it can be reverted independently if needed.
+
+---
+
+## Session 11 - 2026-10-17: Ops Hardening & Smoke Tests
+
+### Concepts Learned
+
+**Editing Plists Safely in CI**
+- Avoid `sed` for `Info.plist`; `plutil -replace KEY -string VALUE` targets a specific key, and `plutil -lint` verifies the result. This removes the risk of replacing an unrelated `<string>1.0.0</string>`.
+
+**Pragmatic Smoke Tests Without SPM or Xcode**
+- A shell script can `swiftc` a temporary `main.swift` together with the real source files, then assert on real API output. This gives meaningful coverage (CPU sampling, memory sampling, top processes, formatters) without restructuring the project.
+- The harness defines the `isDebugMode` global that `StatsEngine` expects, and compiles only the files it needs, so it never pulls in `AppDelegate` or the app entry point.
+
+**CI as a Gate**
+- Run the app-bundle signature check first, then the smoke test. Both are fast and catch different failure classes: packaging vs. runtime behavior.
