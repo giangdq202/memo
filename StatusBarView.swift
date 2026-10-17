@@ -14,13 +14,6 @@ public class BaseStatsView: NSView {
 }
 
 // MARK: - Color Utilities
-public enum NetworkUnitMode: Int {
-    case auto = 0
-    case binary = 1
-    case decimal = 2
-    case bits = 3
-}
-
 public enum AlertLevel: Int {
     case normal = 0
     case warning = 1
@@ -80,78 +73,6 @@ public func colorForTemperature(_ temp: Double, isDark: Bool) -> NSColor {
     return discreteColor(level: level, isDark: isDark)
 }
 
-public func colorForNetworkSpeed(_ bytesPerSec: Double, isDark: Bool, defaultColor: NSColor) -> NSColor {
-    guard bytesPerSec >= 1024.0 else { return defaultColor }
-    let logKb = log10(bytesPerSec / 1024.0)
-    let normalized = min(max(logKb / 4.5, 0.0), 1.0)
-    // Map normalized speed [0, 1] to threshold levels roughly mapping to 40%, 60%, 80% full scale
-    let level = levelForValue(normalized * 100.0, warn: 40.0, high: 60.0, crit: 80.0)
-    return discreteColor(level: level, isDark: isDark)
-}
-
-/// Shared network speed formatter. Returns (value, unit) so callers can
-/// compose them with any separator or font combination. Both the menu bar
-/// view and the dropdown menu call this single implementation.
-///
-/// - Parameters:
-///   - bytesPerSec: Raw bytes/second from StatsEngine.
-///   - shortUnit: When true, returns short units ("B","K","M","G") for the
-///     compact menu bar. When false, returns full units ("B/s","K/s","M/s"…).
-public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode) -> (val: String, unit: String) {
-    let val: Double
-    let tiers: [(threshold: Double, divisor: Double, short: String, full: String)]
-    
-    switch mode {
-    case .auto:
-        val = bytesPerSec
-        tiers = [
-            (1024.0, 1.0, "B", "B/s"),
-            (1024.0 * 1024.0, 1024.0, "K", "K/s"),
-            (1024.0 * 1048576.0, 1048576.0, "M", "M/s"),
-            (Double.infinity, 1073741824.0, "G", "G/s"),
-        ]
-    case .binary:
-        val = bytesPerSec
-        tiers = [
-            (1024.0, 1.0, "B", "B/s"),
-            (1024.0 * 1024.0, 1024.0, "Ki", "KiB/s"),
-            (1024.0 * 1048576.0, 1048576.0, "Mi", "MiB/s"),
-            (Double.infinity, 1073741824.0, "Gi", "GiB/s"),
-        ]
-    case .decimal:
-        val = bytesPerSec
-        tiers = [
-            (1000.0, 1.0, "B", "B/s"),
-            (1000.0 * 1000.0, 1000.0, "K", "KB/s"),
-            (1000.0 * 1000000.0, 1000000.0, "M", "MB/s"),
-            (Double.infinity, 1000000000.0, "G", "GB/s"),
-        ]
-    case .bits:
-        val = bytesPerSec * 8.0
-        tiers = [
-            (1000.0, 1.0, "b", "bps"),
-            (1000.0 * 1000.0, 1000.0, "K", "Kbps"),
-            (1000.0 * 1000000.0, 1000000.0, "M", "Mbps"),
-            (Double.infinity, 1000000000.0, "G", "Gbps"),
-        ]
-    }
-    
-    for tier in tiers {
-        if val < tier.threshold {
-            let scaled = val / tier.divisor
-            let numStr: String
-            if scaled < 10.0 && tier.divisor > 1.0 {
-                numStr = String(format: "%.1f", scaled)
-            } else {
-                numStr = String(format: "%.0f", scaled)
-            }
-            return (numStr, shortUnit ? tier.short : tier.full)
-        }
-    }
-    let lastUnit = tiers.last.map { shortUnit ? $0.short : $0.full } ?? "B"
-    return (String(format: "%.0f", val), lastUnit)
-}
-
 /// Converts a Celsius reading to the requested unit.
 private func convertedTemperature(_ celsius: Double, unit: String) -> Double {
     return unit == "F" ? celsius * 1.8 + 32.0 : celsius
@@ -190,13 +111,10 @@ private let rightAlignStyle: NSParagraphStyle = {
 }()
 
 private let font = NSFont.monospacedDigitSystemFont(ofSize: 9.0, weight: .bold)
-private let unitFont = NSFont.monospacedSystemFont(ofSize: 9.0, weight: .bold)
 private let cpuMemUnitFont = NSFont.systemFont(ofSize: 9.0, weight: .bold)
 private let tempValFont = NSFont.monospacedDigitSystemFont(ofSize: 10.0, weight: .bold)
 
-private let networkSectionWidth: CGFloat = 44.0
-private let cpuMemWidthWithNetwork: CGFloat = 40.0
-private let cpuMemWidthWithoutNetwork: CGFloat = 38.0
+private let cpuMemWidth: CGFloat = 38.0
 private let temperatureSectionWidth: CGFloat = 21.0
 
 // MARK: - Unified Status Bar View with Cached Rendering
@@ -208,41 +126,29 @@ public class UnifiedStatsView: BaseStatsView {
     private var _memGB: Double = -1
     private var _memPercent: Double = -1
     private var _pressureLevel: Int = 0
-    private var _uploadBPS: Double = -1
-    private var _downloadBPS: Double = -1
 
-    public var showNetwork: Bool = true
     public var showTemperature: Bool = true
-    public var networkUnitMode: NetworkUnitMode = .auto
 
-    public static func calculateWidth(showNetwork: Bool, showTemperature: Bool) -> CGFloat {
-        let netW: CGFloat = showNetwork ? networkSectionWidth : 0.0
-        let cpuMemW: CGFloat = showNetwork ? cpuMemWidthWithNetwork : cpuMemWidthWithoutNetwork
+    public static func calculateWidth(showTemperature: Bool) -> CGFloat {
+        let cpuMemW: CGFloat = cpuMemWidth
         let tempW: CGFloat = showTemperature ? temperatureSectionWidth : 0.0
         
-        return netW + cpuMemW + tempW
+        return cpuMemW + tempW
     }
 
     // Cached rendered attributed strings (survive across frames)
-    private var cachedUpArrow: NSAttributedString?
-    private var cachedDownArrow: NSAttributedString?
-    private var cachedUpLine: NSAttributedString?
-    private var cachedDownLine: NSAttributedString?
     private var cachedCpuLine: NSAttributedString?
     private var cachedMemLine: NSAttributedString?
     private var cachedTempLine: NSAttributedString?
     private var cachedTempUnitLine: NSAttributedString?
 
     // Cached raw values used as cache invalidation keys (avoid String allocation)
-    private var lastUpBPS: Double = -1
-    private var lastDownBPS: Double = -1
     private var lastCpuPct: Double = -1
     private var lastMemGB: Double = -1
     private var lastMemPct: Double = -1
     private var lastPressure: Int = -1
     private var lastTempC: Double = -1
     private var lastTempUnit: String = ""
-    private var lastMode: NetworkUnitMode = .auto
 
     // Cached appearance state
     private var cachedIsDark: Bool? = nil
@@ -262,14 +168,11 @@ public class UnifiedStatsView: BaseStatsView {
         self.layerContentsRedrawPolicy = .onSetNeedsDisplay
     }
 
-    public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double, memPercent: Double, pressureLevel: Int,
-                             uploadBytesPerSec: Double, downloadBytesPerSec: Double) {
+    public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double, memPercent: Double, pressureLevel: Int) {
         let dispCpu = cpuPercent.rounded()
         let dispTemp = cpuTemperature > 0 ? cpuTemperature.rounded() : -1.0
         let dispMemGB = (memGB * 10.0).rounded() / 10.0
         let dispMemPct = memPercent.rounded()
-        let dispUp = uploadBytesPerSec.rounded()
-        let dispDown = downloadBytesPerSec.rounded()
 
         var changed = false
         if _cpuPercent != dispCpu { _cpuPercent = dispCpu; changed = true }
@@ -278,13 +181,7 @@ public class UnifiedStatsView: BaseStatsView {
         if _memGB != dispMemGB { _memGB = dispMemGB; changed = true }
         if _memPercent != dispMemPct { _memPercent = dispMemPct; changed = true }
         if _pressureLevel != pressureLevel { _pressureLevel = pressureLevel; changed = true }
-        if _uploadBPS != dispUp { _uploadBPS = dispUp; changed = true }
-        if _downloadBPS != dispDown { _downloadBPS = dispDown; changed = true }
         if changed { needsDisplay = true }
-    }
-
-    private func formatSpeed(_ bytesPerSec: Double) -> (val: String, unit: String) {
-        return formatNetworkSpeed(bytesPerSec, shortUnit: true, mode: networkUnitMode)
     }
 
     private func buildLine(val: String, unit: String, color: NSColor, dimAlpha: CGFloat,
@@ -304,15 +201,11 @@ public class UnifiedStatsView: BaseStatsView {
 
         let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let appearanceChanged = (isDark != cachedIsDark)
-        let mode = networkUnitMode
-        let modeChanged = (mode != lastMode)
         
-        if appearanceChanged || modeChanged {
+        if appearanceChanged {
             cachedIsDark = isDark
-            lastMode = mode
-            cachedUpArrow = nil; cachedDownArrow = nil
-            cachedUpLine = nil; cachedDownLine = nil; cachedCpuLine = nil; cachedMemLine = nil; cachedTempLine = nil; cachedTempUnitLine = nil
-            lastUpBPS = -1; lastDownBPS = -1; lastCpuPct = -1; lastMemGB = -1; lastMemPct = -1; lastPressure = -1; lastTempC = -1; lastTempUnit = ""
+            cachedCpuLine = nil; cachedMemLine = nil; cachedTempLine = nil; cachedTempUnitLine = nil
+            lastCpuPct = -1; lastMemGB = -1; lastMemPct = -1; lastPressure = -1; lastTempC = -1; lastTempUnit = ""
         }
 
         let textColor = isDark ? NSColor.white : NSColor.black
@@ -321,43 +214,10 @@ public class UnifiedStatsView: BaseStatsView {
         let line1Y: CGFloat = 11.0
         let line2Y: CGFloat = 1.0
         let lineH: CGFloat = 11.0
-        let netW: CGFloat = showNetwork ? networkSectionWidth : 0.0
-        let cpuMemW: CGFloat = showNetwork ? cpuMemWidthWithNetwork : cpuMemWidthWithoutNetwork
+        let cpuMemW: CGFloat = cpuMemWidth
         let tempW: CGFloat = showTemperature ? temperatureSectionWidth : 0.0
 
         var currentX: CGFloat = 0.0
-
-        if showNetwork {
-            // Upload
-            if cachedUpLine == nil || _uploadBPS != lastUpBPS {
-                lastUpBPS = _uploadBPS
-                let (upVal, upUnit) = formatSpeed(_uploadBPS)
-                let upColor = colorForNetworkSpeed(_uploadBPS, isDark: isDark, defaultColor: textColor)
-                cachedUpLine = buildLine(val: upVal, unit: upUnit, color: upColor, dimAlpha: dimAlpha,
-                                         valFont: font, uFont: unitFont)
-            }
-            if cachedUpArrow == nil {
-                cachedUpArrow = NSAttributedString(string: "↑", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
-            }
-            cachedUpArrow?.draw(at: CGPoint(x: currentX, y: line1Y))
-            cachedUpLine?.draw(in: CGRect(x: currentX + 8, y: line1Y, width: netW - 8, height: lineH))
-
-            // Download
-            if cachedDownLine == nil || _downloadBPS != lastDownBPS {
-                lastDownBPS = _downloadBPS
-                let (downVal, downUnit) = formatSpeed(_downloadBPS)
-                let downColor = colorForNetworkSpeed(_downloadBPS, isDark: isDark, defaultColor: textColor)
-                cachedDownLine = buildLine(val: downVal, unit: downUnit, color: downColor, dimAlpha: dimAlpha,
-                                           valFont: font, uFont: unitFont)
-            }
-            if cachedDownArrow == nil {
-                cachedDownArrow = NSAttributedString(string: "↓", attributes: [.font: unitFont, .foregroundColor: textColor.withAlphaComponent(dimAlpha)])
-            }
-            cachedDownArrow?.draw(at: CGPoint(x: currentX, y: line2Y))
-            cachedDownLine?.draw(in: CGRect(x: currentX + 8, y: line2Y, width: netW - 8, height: lineH))
-            
-            currentX += netW
-        }
 
         // CPU
         if cachedCpuLine == nil || _cpuPercent != lastCpuPct {

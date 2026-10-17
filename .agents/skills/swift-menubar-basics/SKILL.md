@@ -35,7 +35,7 @@ UserDefaults.standard.set(50.0, forKey: "cpuWarnThreshold")
 let threshold = UserDefaults.standard.object(forKey: "cpuWarnThreshold") as? Double ?? 50.0
 
 // Bool
-let show = UserDefaults.standard.object(forKey: "showNetworkSpeeds") as? Bool ?? true
+let show = UserDefaults.standard.object(forKey: "showCPUTemperature") as? Bool ?? true
 
 // Remove
 UserDefaults.standard.removeObject(forKey: "cpuWarnThreshold")
