@@ -31,6 +31,11 @@
 - **Setup Locals**: `setupStatusItem()` builds local `item` and `view` values, wires them up, then publishes them to the properties.
 - **Guarded Access**: `showMenu()` and `updateStatusItemWidth()` guard-unwrap their dependencies; other call sites use optional chaining (`statsView?.…`) so a missing view cannot crash rendering.
 
+### 2026-10-17: Quick Settings & Startup Polish
+- **Duplicate Instance Wait**: Reduced the old-instance termination window from 2.0s to 0.5s with a 0.05s poll, keeping `forceTerminate()` as the final fallback.
+- **Right-Click Quick Settings**: Right-clicking the menu bar item now opens a compact settings-only menu (toggles, submenus, Quit) while left-click still opens the full dashboard menu.
+- **Shared CPU/Memory Formatting**: Moved `formatCPU` and `formatMemory` out of `AppDelegate` into the shared formatting section of `StatusBarView.swift`.
+
 ### 2026-10-14: Core Optimizations & Logic Fixes
 - **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
 - **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.

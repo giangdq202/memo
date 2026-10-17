@@ -183,3 +183,19 @@
 - `NSStatusItem!` and `UnifiedStatsView!` compile but hide the possibility of a nil access. Real optionals plus `guard let` at the point of use keep the lifecycle explicit.
 - Build dependent objects locally in `setupStatusItem()` (`let item`, `let view`), then assign them to the properties once fully configured. This avoids partially wired property state.
 - For optional UI updates that are safe to skip, optional chaining (`statsView?.updateValues(...)`) is concise; for operations that must not run without the dependency, `guard let` is clearer.
+
+---
+
+## Session 9 - 2026-10-17: Quick Settings & Startup Polish
+
+### Concepts Learned
+
+**Bounded Startup Waits**
+- When terminating a previous process, wait for the shortest practical window and poll often. A 0.5s deadline with a 0.05s run-loop tick keeps the status item handoff reliable without blocking launch for two seconds.
+
+**Distinguishing Left and Right Click**
+- `NSView.mouseDown` and `rightMouseDown` let one view drive two menus. Reusing the same cached `NSMenuItem` objects for both menus is safe because `reuse(_:in:)` detaches each item from its previous menu first.
+- A compact right-click menu can be assembled from the existing cached settings items plus a Quit item, avoiding a second menu definition.
+
+**Shared Formatting Across Files**
+- Small formatters like `formatCPU` and `formatMemory` belong next to the other shared formatters (`formatNetworkSpeed`, `formatTemperature`) so any layer of the app can reuse them without duplicating format strings.
