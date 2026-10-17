@@ -373,11 +373,10 @@ public class UnifiedStatsView: BaseStatsView {
 
         if showTemperature {
             // Temperature
-            let tempVal = formatTemperatureValue(_cpuTemperature, unit: _tempUnit)
-            
             if cachedTempLine == nil || _cpuTemperature != lastTempC || _tempUnit != lastTempUnit {
                 lastTempC = _cpuTemperature
                 lastTempUnit = _tempUnit
+                let tempVal = formatTemperatureValue(_cpuTemperature, unit: _tempUnit)
                 let tempColor = _cpuTemperature > 0 ? colorForTemperature(_cpuTemperature, isDark: isDark) : textColor
                 
                 // Value line (Top, bigger font)
