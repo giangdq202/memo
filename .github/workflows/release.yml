@@ -78,7 +78,8 @@ jobs:
         run: |
           VERSION="${{ steps.versioning.outputs.version }}"
           echo "Updating Info.plist to version ${VERSION}..."
-          sed -i '' "s/<string>1.0.0<\/string>/<string>${VERSION}<\/string>/g" Info.plist || true
+          plutil -replace CFBundleShortVersionString -string "${VERSION}" Info.plist
+          plutil -lint Info.plist
 
       - name: Build macOS Application
         run: |
