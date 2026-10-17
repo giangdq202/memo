@@ -1,7 +1,8 @@
 import AppKit
 import ServiceManagement
+import UserNotifications
 
-public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem?
     private var statsView: UnifiedStatsView?
     
@@ -24,6 +25,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
 
+    // Alert submenus and cooldown state
+    private var cachedCpuAlertSubmenu: NSMenu?
+    private var cachedRamAlertSubmenu: NSMenu?
+    private var cachedTempAlertSubmenu: NSMenu?
+    private let notificationCenter = UNUserNotificationCenter.current()
+    private var lastCpuAlert: CFAbsoluteTime = 0
+    private var lastRamAlert: CFAbsoluteTime = 0
+    private var lastTempAlert: CFAbsoluteTime = 0
+    private let alertCooldown: CFAbsoluteTime = 60.0
+
     // MARK: - Persisted Settings Helpers
 
     private var updateInterval: TimeInterval {
@@ -39,6 +50,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent app from appearing in Dock or Command-Tab switcher
         NSApp.setActivationPolicy(.accessory)
+        notificationCenter.delegate = self
         
         setupStatusItem()
         startTimer()
@@ -88,6 +100,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         currentMemStats = statsEngine.fetchMemoryStats()
         
         renderCurrentStats()
+        checkAlerts()
     }
     
     private func renderCurrentStats() {
@@ -160,8 +173,41 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tempUnitItem.submenu = tempUnitSubmenu
         cachedTempUnitSubmenu = tempUnitSubmenu
 
+        let cpuAlert = makeAlertSubmenu(
+            title: "CPU Alerts",
+            levels: [("Off", 0.0), ("60%", 60.0), ("70%", 70.0), ("80%", 80.0), ("90%", 90.0), ("95%", 95.0)],
+            action: #selector(changeCpuAlert(_:)))
+        cachedCpuAlertSubmenu = cpuAlert.submenu
+
+        let ramAlert = makeAlertSubmenu(
+            title: "RAM Alerts",
+            levels: [("Off", 0.0), ("70%", 70.0), ("80%", 80.0), ("85%", 85.0), ("90%", 90.0), ("95%", 95.0)],
+            action: #selector(changeRamAlert(_:)))
+        cachedRamAlertSubmenu = ramAlert.submenu
+
+        let tempAlert = makeAlertSubmenu(
+            title: "Temperature Alerts",
+            levels: [("Off", 0.0), ("70°C", 70.0), ("80°C", 80.0), ("90°C", 90.0), ("100°C", 100.0)],
+            action: #selector(changeTempAlert(_:)))
+        cachedTempAlertSubmenu = tempAlert.submenu
+
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem]
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem,
+                                     cpuAlert.parent, ramAlert.parent, tempAlert.parent]
+    }
+
+    /// Builds a submenu of alert threshold choices. A level of `0.0` means off.
+    private func makeAlertSubmenu(title: String, levels: [(String, Double)], action: Selector) -> (parent: NSMenuItem, submenu: NSMenu) {
+        let submenu = NSMenu()
+        for (label, level) in levels {
+            let item = NSMenuItem(title: label, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = level
+            submenu.addItem(item)
+        }
+        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return (parent, submenu)
     }
 
     private func buildFooterItems() {
@@ -198,6 +244,19 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let key = item.representedObject as? String {
                     item.state = (tempUnit == key) ? .on : .off
                 }
+            }
+        }
+
+        updateAlertSubmenuState(cachedCpuAlertSubmenu, selectedLevel: cpuAlertThreshold)
+        updateAlertSubmenuState(cachedRamAlertSubmenu, selectedLevel: ramAlertThreshold)
+        updateAlertSubmenuState(cachedTempAlertSubmenu, selectedLevel: tempAlertThreshold)
+    }
+
+    private func updateAlertSubmenuState(_ submenu: NSMenu?, selectedLevel: Double) {
+        guard let submenu = submenu else { return }
+        for item in submenu.items {
+            if let level = item.representedObject as? Double {
+                item.state = (selectedLevel == level) ? .on : .off
             }
         }
     }
@@ -552,6 +611,89 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let unit = sender.representedObject as? String {
             tempUnit = unit
         }
+    }
+    
+    // MARK: - Alert Settings
+
+    private var cpuAlertThreshold: Double {
+        get { UserDefaults.standard.double(forKey: "cpuAlertThreshold") }
+        set { UserDefaults.standard.set(newValue, forKey: "cpuAlertThreshold") }
+    }
+
+    private var ramAlertThreshold: Double {
+        get { UserDefaults.standard.double(forKey: "ramAlertThreshold") }
+        set { UserDefaults.standard.set(newValue, forKey: "ramAlertThreshold") }
+    }
+
+    private var tempAlertThreshold: Double {
+        get { UserDefaults.standard.double(forKey: "tempAlertThreshold") }
+        set { UserDefaults.standard.set(newValue, forKey: "tempAlertThreshold") }
+    }
+
+    @objc private func changeCpuAlert(_ sender: NSMenuItem) {
+        guard let level = sender.representedObject as? Double else { return }
+        cpuAlertThreshold = level
+        if level > 0 { requestNotificationPermission() }
+    }
+
+    @objc private func changeRamAlert(_ sender: NSMenuItem) {
+        guard let level = sender.representedObject as? Double else { return }
+        ramAlertThreshold = level
+        if level > 0 { requestNotificationPermission() }
+    }
+
+    @objc private func changeTempAlert(_ sender: NSMenuItem) {
+        guard let level = sender.representedObject as? Double else { return }
+        tempAlertThreshold = level
+        if level > 0 { requestNotificationPermission() }
+    }
+
+    private func checkAlerts() {
+        let now = CFAbsoluteTimeGetCurrent()
+
+        let cpu = currentCpuStats.usagePercent
+        let cpuThreshold = cpuAlertThreshold
+        if cpuThreshold > 0 && cpu >= cpuThreshold && now - lastCpuAlert >= alertCooldown {
+            lastCpuAlert = now
+            postAlert(title: "High CPU Usage",
+                      body: "CPU is at \(String(format: "%.0f", cpu))% (limit \(String(format: "%.0f", cpuThreshold))%).")
+        }
+
+        let ram = currentMemStats.usedPercent
+        let ramThreshold = ramAlertThreshold
+        if ramThreshold > 0 && ram >= ramThreshold && now - lastRamAlert >= alertCooldown {
+            lastRamAlert = now
+            postAlert(title: "High Memory Usage",
+                      body: "Memory is at \(String(format: "%.0f", ram))% (limit \(String(format: "%.0f", ramThreshold))%).")
+        }
+
+        let temp = currentCpuStats.temperature
+        let tempThreshold = tempAlertThreshold
+        if tempThreshold > 0 && temp > 0 && temp >= tempThreshold && now - lastTempAlert >= alertCooldown {
+            lastTempAlert = now
+            let display = formatTemperature(temp, unit: tempUnit)
+            postAlert(title: "High CPU Temperature",
+                      body: "CPU temperature is \(display) (limit \(String(format: "%.0f", tempThreshold))°C).")
+        }
+    }
+
+    private func postAlert(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        notificationCenter.add(request)
+    }
+
+    private func requestNotificationPermission() {
+        notificationCenter.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    public func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                       willPresent notification: UNNotification,
+                                       withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
     
     @objc private func openGitHubPage() {
