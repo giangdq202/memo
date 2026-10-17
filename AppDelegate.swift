@@ -35,6 +35,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     private var lastTempAlert: CFAbsoluteTime = 0
     private let alertCooldown: CFAbsoluteTime = 60.0
 
+    // History buffers for the dropdown sparkline
+    private var cpuHistory: [Double] = []
+    private var ramHistory: [Double] = []
+    private var tempHistory: [Double] = []
+    private let historyCapacity = 60
+    private var cachedSparklineSubmenu: NSMenu?
+
     // MARK: - Persisted Settings Helpers
 
     private var updateInterval: TimeInterval {
@@ -99,8 +106,24 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         currentCpuStats = statsEngine.fetchCPUStats()
         currentMemStats = statsEngine.fetchMemoryStats()
         
+        appendHistory()
         renderCurrentStats()
         checkAlerts()
+    }
+    
+    private func appendHistory() {
+        append(currentCpuStats.usagePercent, to: &cpuHistory)
+        append(currentMemStats.usedPercent, to: &ramHistory)
+        if currentCpuStats.temperature > 0 {
+            append(currentCpuStats.temperature, to: &tempHistory)
+        }
+    }
+
+    private func append(_ value: Double, to buffer: inout [Double]) {
+        buffer.append(value)
+        if buffer.count > historyCapacity {
+            buffer.removeFirst(buffer.count - historyCapacity)
+        }
     }
     
     private func renderCurrentStats() {
@@ -191,9 +214,23 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
             action: #selector(changeTempAlert(_:)))
         cachedTempAlertSubmenu = tempAlert.submenu
 
+        let sparklineSubmenu = NSMenu()
+        let sparklineOptions: [(String, SparklineMetric)] = [
+            ("Off", .off), ("CPU", .cpu), ("RAM", .ram), ("Temperature", .temp)
+        ]
+        for (label, metric) in sparklineOptions {
+            let item = NSMenuItem(title: label, action: #selector(changeSparklineMetric(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = metric.rawValue
+            sparklineSubmenu.addItem(item)
+        }
+        let sparklineItem = NSMenuItem(title: "History Graph", action: nil, keyEquivalent: "")
+        sparklineItem.submenu = sparklineSubmenu
+        cachedSparklineSubmenu = sparklineSubmenu
+
         // Store the parent items in the settings order they appear in the menu.
         cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem,
-                                     cpuAlert.parent, ramAlert.parent, tempAlert.parent]
+                                     cpuAlert.parent, ramAlert.parent, tempAlert.parent, sparklineItem]
     }
 
     /// Builds a submenu of alert threshold choices. A level of `0.0` means off.
@@ -250,6 +287,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         updateAlertSubmenuState(cachedCpuAlertSubmenu, selectedLevel: cpuAlertThreshold)
         updateAlertSubmenuState(cachedRamAlertSubmenu, selectedLevel: ramAlertThreshold)
         updateAlertSubmenuState(cachedTempAlertSubmenu, selectedLevel: tempAlertThreshold)
+
+        let selectedSparkline = sparklineMetric
+        if let submenu = cachedSparklineSubmenu {
+            for item in submenu.items {
+                if let raw = item.representedObject as? String {
+                    item.state = (selectedSparkline.rawValue == raw) ? .on : .off
+                }
+            }
+        }
     }
 
     private func updateAlertSubmenuState(_ submenu: NSMenu?, selectedLevel: Double) {
@@ -363,6 +409,33 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
                     return (view, updater)
                 }))
             }
+            menu.addItem(NSMenuItem.separator())
+        }
+
+        // --- History Section ---
+        let sparkline = sparklineMetric
+        if sparkline != .off {
+            menu.addItem(Self.sectionHeader("History"))
+            let historyItem = NSMenuItem(title: "History", action: nil, keyEquivalent: "")
+            historyItem.isEnabled = false
+            menu.addItem(historyItem)
+            customViews.append((historyItem, { [weak self] width in
+                guard let self = self else { return (NSView(), {}) }
+                let view = SparklineView(frame: NSRect(x: 0, y: 0, width: width, height: 40))
+                let values = self.historyValues(for: sparkline)
+                view.values = values
+                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                view.lineColor = self.sparklineColor(for: sparkline, value: values.last ?? 0.0, isDark: isDark)
+                let updater = { [weak self, weak view] in
+                    guard let self = self, let view = view else { return }
+                    let newValues = self.historyValues(for: sparkline)
+                    view.values = newValues
+                    let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    view.lineColor = self.sparklineColor(for: sparkline, value: newValues.last ?? 0.0, isDark: dark)
+                    view.needsDisplay = true
+                }
+                return (view, updater)
+            }))
             menu.addItem(NSMenuItem.separator())
         }
 
@@ -628,6 +701,38 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     private var tempAlertThreshold: Double {
         get { UserDefaults.standard.double(forKey: "tempAlertThreshold") }
         set { UserDefaults.standard.set(newValue, forKey: "tempAlertThreshold") }
+    }
+
+    private var sparklineMetric: SparklineMetric {
+        get {
+            let raw = UserDefaults.standard.string(forKey: "sparklineMetric") ?? SparklineMetric.off.rawValue
+            return SparklineMetric(rawValue: raw) ?? .off
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "sparklineMetric") }
+    }
+
+    private func historyValues(for metric: SparklineMetric) -> [Double] {
+        switch metric {
+        case .cpu: return cpuHistory
+        case .ram: return ramHistory
+        case .temp: return tempHistory
+        case .off: return []
+        }
+    }
+
+    private func sparklineColor(for metric: SparklineMetric, value: Double, isDark: Bool) -> NSColor {
+        switch metric {
+        case .cpu: return colorForUsage(value, isDark: isDark, metricPrefix: "cpu")
+        case .ram: return colorForUsage(value, isDark: isDark, metricPrefix: "mem")
+        case .temp: return colorForTemperature(value, isDark: isDark)
+        case .off: return .secondaryLabelColor
+        }
+    }
+
+    @objc private func changeSparklineMetric(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let metric = SparklineMetric(rawValue: raw) else { return }
+        sparklineMetric = metric
     }
 
     @objc private func changeCpuAlert(_ sender: NSMenuItem) {

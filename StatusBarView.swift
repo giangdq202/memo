@@ -13,12 +13,70 @@ public class BaseStatsView: NSView {
     }
 }
 
+/// A lightweight line graph used inside the dropdown menu to show recent
+/// samples of a single metric.
+public class SparklineView: NSView {
+    public var values: [Double] = []
+    public var lineColor: NSColor = .systemBlue
+
+    public override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard values.count > 1 else { return }
+
+        let inset: CGFloat = 2.0
+        let graphRect = bounds.insetBy(dx: inset, dy: inset)
+        guard graphRect.width > 0, graphRect.height > 0 else { return }
+
+        let minimum = values.min() ?? 0.0
+        let maximum = values.max() ?? 1.0
+        let span = max(maximum - minimum, 1.0)
+        let isFlat = maximum == minimum
+
+        // Faint baseline to anchor the graph visually.
+        NSColor.tertiaryLabelColor.withAlphaComponent(0.25).setStroke()
+        let baseline = NSBezierPath()
+        baseline.move(to: NSPoint(x: graphRect.minX, y: graphRect.minY))
+        baseline.line(to: NSPoint(x: graphRect.maxX, y: graphRect.minY))
+        baseline.lineWidth = 1.0
+        baseline.stroke()
+
+        let path = NSBezierPath()
+        path.lineWidth = 1.5
+        path.lineJoinStyle = .round
+        path.lineCapStyle = .round
+
+        let stepX = graphRect.width / CGFloat(values.count - 1)
+        for (index, value) in values.enumerated() {
+            let normalized = isFlat ? 0.5 : (value - minimum) / span
+            let x = graphRect.minX + CGFloat(index) * stepX
+            let y = graphRect.minY + CGFloat(normalized) * graphRect.height
+            let point = NSPoint(x: x, y: y)
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.line(to: point)
+            }
+        }
+
+        lineColor.setStroke()
+        path.stroke()
+    }
+}
+
 // MARK: - Color Utilities
 public enum AlertLevel: Int {
     case normal = 0
     case warning = 1
     case high = 2
     case critical = 3
+}
+
+/// Selects which metric the history sparkline displays.
+public enum SparklineMetric: String {
+    case off = ""
+    case cpu = "cpu"
+    case ram = "ram"
+    case temp = "temp"
 }
 
 public func discreteColor(level: AlertLevel, isDark: Bool) -> NSColor {

@@ -152,6 +152,7 @@ UserDefaults keys currently in use:
 * `cpuAlertThreshold` (Double, 0 = off; preset levels 60/70/80/90/95; default: 0)
 * `ramAlertThreshold` (Double, 0 = off; preset levels 70/80/85/90/95; default: 0)
 * `tempAlertThreshold` (Double, 0 = off; preset levels 70/80/90/100; default: 0)
+* `sparklineMetric` (String, "", "cpu", "ram", or "temp"; default: "")
 
 ---
 
