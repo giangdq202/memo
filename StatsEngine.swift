@@ -70,15 +70,26 @@ public class StatsEngine {
     private var prevNetBytesRecv: UInt64 = 0
     private var prevNetTime: CFAbsoluteTime = 0
     private var cachedActiveInterface: String = "en0"
+    private var cachedPrimaryInterface: String = "en0"
+    private var lastPrimaryInterfaceCheck: CFAbsoluteTime = 0
+    private let primaryInterfaceCacheTTL: CFAbsoluteTime = 5.0
     
     /// Queries SystemConfiguration for the current primary IPv4 network interface.
+    /// The result is cached for a few seconds so the periodic tick does not hit
+    /// SystemConfiguration on every sample.
     private func getPrimaryInterface() -> String {
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastPrimaryInterfaceCheck < primaryInterfaceCacheTTL {
+            return cachedPrimaryInterface
+        }
+        lastPrimaryInterfaceCheck = now
+        
         if let store = dynamicStore,
            let ipv4 = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
            let primaryInterface = ipv4["PrimaryInterface"] as? String {
-            return primaryInterface
+            cachedPrimaryInterface = primaryInterface
         }
-        return "en0"
+        return cachedPrimaryInterface
     }
     
     /// Appends a debug message to `/tmp/memo_debug.log` when `--debug` is active.
