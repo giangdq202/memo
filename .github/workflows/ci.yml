@@ -30,3 +30,8 @@ jobs:
         run: |
           codesign --verify --deep --strict MeMo.app
           test -x MeMo.app/Contents/MacOS/MeMo
+
+      - name: Run smoke tests
+        run: |
+          chmod +x scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
