@@ -26,6 +26,11 @@
 - **Top-Process Cache**: Cached `fetchTopProcesses(limit:)` for two seconds, avoiding repeated `/bin/ps` spawns when the menu is reopened quickly.
 - **CI Verification**: Added `codesign --verify --deep --strict` and an executable check after the CI build.
 
+### 2026-10-17: Optional AppKit References
+- **Safe Optionals**: Changed `AppDelegate.statusItem` and `AppDelegate.statsView` from implicitly unwrapped optionals to real optionals.
+- **Setup Locals**: `setupStatusItem()` builds local `item` and `view` values, wires them up, then publishes them to the properties.
+- **Guarded Access**: `showMenu()` and `updateStatusItemWidth()` guard-unwrap their dependencies; other call sites use optional chaining (`statsView?.…`) so a missing view cannot crash rendering.
+
 ### 2026-10-14: Core Optimizations & Logic Fixes
 - **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
 - **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.
