@@ -2,8 +2,8 @@ import AppKit
 import ServiceManagement
 
 public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var statusItem: NSStatusItem!
-    private var statsView: UnifiedStatsView!
+    private var statusItem: NSStatusItem?
+    private var statsView: UnifiedStatsView?
     
     private let statsEngine = StatsEngine()
     private var timer: Timer?
@@ -54,21 +54,25 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let statusBar = NSStatusBar.system
         
         let initialWidth = UnifiedStatsView.calculateWidth(showNetwork: showNetworkSpeeds, showTemperature: showCPUTemperature)
-        statusItem = statusBar.statusItem(withLength: initialWidth)
-        statsView = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
-        statsView.onClick = { [weak self] in self?.showMenu() }
-        statsView.onRightClick = { [weak self] in self?.showMenu() }
+        let item = statusBar.statusItem(withLength: initialWidth)
+        let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
+        view.onClick = { [weak self] in self?.showMenu() }
+        view.onRightClick = { [weak self] in self?.showMenu() }
         
-        statsView.showNetwork = showNetworkSpeeds
-        statsView.showTemperature = showCPUTemperature
-        statsView.networkUnitMode = networkUnitMode
-        updateStatusItemWidth()
+        view.showNetwork = showNetworkSpeeds
+        view.showTemperature = showCPUTemperature
+        view.networkUnitMode = networkUnitMode
         
-        if let button = statusItem.button {
-            button.addSubview(statsView)
-            statsView.frame = button.bounds
-            statsView.autoresizingMask = [.width, .height]
+        statusItem = item
+        statsView = view
+        
+        if let button = item.button {
+            button.addSubview(view)
+            view.frame = button.bounds
+            view.autoresizingMask = [.width, .height]
         }
+        
+        updateStatusItemWidth()
     }
     
     private func startTimer() {
@@ -93,7 +97,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     private func renderCurrentStats() {
-        statsView.updateValues(
+        statsView?.updateValues(
             cpuPercent: currentCpuStats.usagePercent,
             cpuTemperature: currentCpuStats.temperature,
             tempUnit: tempUnit,
@@ -244,6 +248,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showMenu() {
+        guard let statusItem = statusItem else { return }
         buildStaticMenuItems()
         updateStaticMenuStates()
 
@@ -576,14 +581,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     private func updateUIForSettingsChange() {
-        statsView.showNetwork = showNetworkSpeeds
-        statsView.showTemperature = showCPUTemperature
-        statsView.networkUnitMode = networkUnitMode
+        statsView?.showNetwork = showNetworkSpeeds
+        statsView?.showTemperature = showCPUTemperature
+        statsView?.networkUnitMode = networkUnitMode
         updateStatusItemWidth()
-        statsView.needsDisplay = true
+        statsView?.needsDisplay = true
     }
 
     private func updateStatusItemWidth() {
+        guard let statusItem = statusItem, let statsView = statsView else { return }
         let width = UnifiedStatsView.calculateWidth(showNetwork: showNetworkSpeeds, showTemperature: showCPUTemperature)
         statusItem.length = width
         statsView.frame.size.width = width

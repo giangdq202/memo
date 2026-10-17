@@ -172,3 +172,14 @@
 
 **CI as a Gate**
 - Adding `codesign --verify --deep --strict` and an executable check after the build catches broken bundles before a release.
+
+---
+
+## Session 8 - 2026-10-17: Optional AppKit References
+
+### Concepts Learned
+
+**Avoiding Implicitly Unwrapped Optionals**
+- `NSStatusItem!` and `UnifiedStatsView!` compile but hide the possibility of a nil access. Real optionals plus `guard let` at the point of use keep the lifecycle explicit.
+- Build dependent objects locally in `setupStatusItem()` (`let item`, `let view`), then assign them to the properties once fully configured. This avoids partially wired property state.
+- For optional UI updates that are safe to skip, optional chaining (`statsView?.updateValues(...)`) is concise; for operations that must not run without the dependency, `guard let` is clearer.
