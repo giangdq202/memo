@@ -57,7 +57,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
-        view.onRightClick = { [weak self] in self?.showMenu() }
+        view.onRightClick = { [weak self] in self?.showQuickSettingsMenu() }
         
         view.showNetwork = showNetworkSpeeds
         view.showTemperature = showCPUTemperature
@@ -414,6 +414,27 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 activeMenuUpdaters.append(updater)
             }
         }
+
+        menu.delegate = self
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    /// Right-click opens a compact settings-only menu that reuses the cached
+    /// settings items and the Quit item.
+    private func showQuickSettingsMenu() {
+        guard let statusItem = statusItem else { return }
+        buildStaticMenuItems()
+        updateStaticMenuStates()
+
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for item in cachedSettingsParentItems {
+            reuse(item, in: menu)
+        }
+        menu.addItem(NSMenuItem.separator())
+        reuse(cachedQuitItem, in: menu)
 
         menu.delegate = self
         statusItem.menu = menu
