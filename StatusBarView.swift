@@ -170,6 +170,18 @@ public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
     return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
 }
 
+/// Formats a CPU percentage for menu rows.
+public func formatCPU(_ percent: Double) -> String {
+    return String(format: "%.0f%%", percent)
+}
+
+/// Formats a byte count for menu rows, preferring GB and falling back to MB.
+public func formatMemory(_ bytes: UInt64) -> String {
+    let gb = Double(bytes) / 1_073_741_824.0
+    if gb >= 1.0 { return String(format: "%.1f GB", gb) }
+    return String(format: "%.0f MB", Double(bytes) / 1_048_576.0)
+}
+
 // MARK: - Static constants (allocated once for app lifetime)
 private let rightAlignStyle: NSParagraphStyle = {
     let style = NSMutableParagraphStyle()

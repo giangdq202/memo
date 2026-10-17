@@ -267,12 +267,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(cpuItem)
         customViews.append((cpuItem, { [weak self] width in 
             guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = Self.progressBarRow(label: "CPU", percent: self.currentCpuStats.usagePercent, valueText: Self.formatCPU(self.currentCpuStats.usagePercent), prefix: "cpu", width: width)
+            let (view, updateBlock) = Self.progressBarRow(label: "CPU", percent: self.currentCpuStats.usagePercent, valueText: formatCPU(self.currentCpuStats.usagePercent), prefix: "cpu", width: width)
             let updater = { [weak self, weak view] in
                 guard let self = self, let view = view else { return }
                 let pct = self.currentCpuStats.usagePercent
                 let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                updateBlock(pct, Self.formatCPU(pct), colorForUsage(pct, isDark: isDark, metricPrefix: "cpu"))
+                updateBlock(pct, formatCPU(pct), colorForUsage(pct, isDark: isDark, metricPrefix: "cpu"))
             }
             return (view, updater)
         }))
@@ -367,7 +367,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !top.byCPU.isEmpty {
             menu.addItem(Self.sectionHeader("Top CPU"))
             for p in top.byCPU {
-                let value = Self.formatCPU(p.cpuPercent)
+                let value = formatCPU(p.cpuPercent)
                 let item = Self.provisionalUsageItem(name: p.name, value: value)
                 menu.addItem(item)
                 customViews.append((item, { w in (Self.usageRowView(name: p.name, value: value, width: w), {}) }))
@@ -377,7 +377,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !top.byMemory.isEmpty {
             menu.addItem(Self.sectionHeader("Top Memory"))
             for p in top.byMemory {
-                let value = Self.formatMemory(p.memoryBytes)
+                let value = formatMemory(p.memoryBytes)
                 let item = Self.provisionalUsageItem(name: p.name, value: value)
                 menu.addItem(item)
                 customViews.append((item, { w in (Self.usageRowView(name: p.name, value: value, width: w), {}) }))
@@ -855,18 +855,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         return (container, updater)
-    }
-
-
-
-    private static func formatCPU(_ percent: Double) -> String {
-        return String(format: "%.0f%%", percent)
-    }
-
-    private static func formatMemory(_ bytes: UInt64) -> String {
-        let gb = Double(bytes) / 1_073_741_824.0
-        if gb >= 1.0 { return String(format: "%.1f GB", gb) }
-        return String(format: "%.0f MB", Double(bytes) / 1_048_576.0)
     }
 }
 
