@@ -106,6 +106,8 @@ public class StatsEngine {
     
     // Active temperature keys grouped by cluster (e.g. CPU, GPU)
     private var activeTempKeys: [String: [String]] = [:]
+    private var cachedTempValues: [String: Double] = [:]
+    private var tempSampleTick = 0
 
     public init() {
         var pageSize: vm_size_t = 4096
@@ -119,7 +121,9 @@ public class StatsEngine {
         let smc = SMC.shared
         func isActive(_ key: String) -> Bool {
             guard let val = smc.getValue(key) else { return false }
-            return val > 15.0 && val < 110.0
+            guard val > 15.0 && val < 110.0 else { return false }
+            cachedTempValues[key] = val
+            return true
         }
 
         var groups: [String: [String]] = [
@@ -218,37 +222,55 @@ public class StatsEngine {
         self.prevCpuInfo = cpuInfo
         self.prevCpuInfoCount = cpuInfoCount
         
-        // Calculate CPU average temperature and cluster temperatures
+        // Calculate CPU average temperature and cluster temperatures.
+        // Only one cluster is sampled per tick; cached values keep the other
+        // clusters usable without issuing IOKit calls for every sensor.
         if !activeTempKeys.isEmpty {
             let clusterOrder = ["P-Cores", "E-Cores", "GPU", "Other CPU"]
+            let groupsToSample = clusterOrder.filter { activeTempKeys[$0] != nil }
+            let smc = SMC.shared
+
+            if !groupsToSample.isEmpty {
+                let groupName = groupsToSample[tempSampleTick % groupsToSample.count]
+                tempSampleTick &+= 1
+
+                if let keys = activeTempKeys[groupName] {
+                    for key in keys {
+                        if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
+                            cachedTempValues[key] = val
+                        } else {
+                            cachedTempValues.removeValue(forKey: key)
+                        }
+                    }
+                }
+            }
+
             var coreSum: Double = 0.0
             var coreCount = 0
             var fallbackSum: Double = 0.0
             var fallbackCount = 0
-            let smc = SMC.shared
-            
+
             for groupName in clusterOrder {
                 guard let keys = activeTempKeys[groupName] else { continue }
                 var groupSum: Double = 0.0
                 var groupCount = 0
                 for key in keys {
-                    if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
-                        groupSum += val
-                        groupCount += 1
-                        if groupName == "P-Cores" || groupName == "E-Cores" {
-                            coreSum += val
-                            coreCount += 1
-                        } else if groupName == "Other CPU" {
-                            fallbackSum += val
-                            fallbackCount += 1
-                        }
+                    guard let val = cachedTempValues[key] else { continue }
+                    groupSum += val
+                    groupCount += 1
+                    if groupName == "P-Cores" || groupName == "E-Cores" {
+                        coreSum += val
+                        coreCount += 1
+                    } else if groupName == "Other CPU" {
+                        fallbackSum += val
+                        fallbackCount += 1
                     }
                 }
                 if groupCount > 0 {
                     stats.tempClusters.append(TempCluster(name: groupName, temperature: groupSum / Double(groupCount)))
                 }
             }
-            
+
             if coreCount > 0 {
                 stats.temperature = coreSum / Double(coreCount)
             } else if fallbackCount > 0 {
