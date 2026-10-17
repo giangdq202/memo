@@ -75,6 +75,9 @@ public class StatsEngine {
     private var cachedPrimaryInterface: String = "en0"
     private var lastPrimaryInterfaceCheck: CFAbsoluteTime = 0
     private let primaryInterfaceCacheTTL: CFAbsoluteTime = 5.0
+    private var cachedTopProcesses: (limit: Int, byCPU: [ProcessUsage], byMemory: [ProcessUsage])?
+    private var cachedTopProcessesTime: CFAbsoluteTime = 0
+    private let topProcessCacheTTL: CFAbsoluteTime = 2.0
     
     /// Queries SystemConfiguration for the current primary IPv4 network interface.
     /// The result is cached for a few seconds so the periodic tick does not hit
@@ -472,6 +475,13 @@ public class StatsEngine {
     /// no second sample is needed. This is only called on menu open, so the
     /// one-off subprocess cost never touches the periodic update path.
     public func fetchTopProcesses(limit: Int) -> (byCPU: [ProcessUsage], byMemory: [ProcessUsage]) {
+        let now = CFAbsoluteTimeGetCurrent()
+        if let cached = cachedTopProcesses,
+           cached.limit == limit,
+           now - cachedTopProcessesTime < topProcessCacheTTL {
+            return (cached.byCPU, cached.byMemory)
+        }
+
         let currentUID = getuid()
 
         let task = Process()
@@ -510,9 +520,11 @@ public class StatsEngine {
         }
 
         let all = Array(byName.values)
-        let byCPU = all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(limit)
-        let byMemory = all.sorted { $0.memoryBytes > $1.memoryBytes }.prefix(limit)
-        return (Array(byCPU), Array(byMemory))
+        let byCPU = Array(all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(limit))
+        let byMemory = Array(all.sorted { $0.memoryBytes > $1.memoryBytes }.prefix(limit))
+        cachedTopProcesses = (limit, byCPU, byMemory)
+        cachedTopProcessesTime = CFAbsoluteTimeGetCurrent()
+        return (byCPU, byMemory)
     }
 
     /// Parses one `ps` line: three leading numeric columns (pcpu, rss, uid)
