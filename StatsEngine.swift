@@ -99,6 +99,12 @@ public class StatsEngine {
     /// open/close pair for every log line.
     private func writeDebugLog(_ message: String) {
         guard let data = message.data(using: .utf8) else { return }
+        if debugLogHandle != nil && !FileManager.default.fileExists(atPath: debugLogPath) {
+            // Writing to an unlinked file succeeds silently, so detect external
+            // deletion before reusing the handle.
+            debugLogHandle?.closeFile()
+            debugLogHandle = nil
+        }
         if debugLogHandle == nil {
             if !FileManager.default.fileExists(atPath: debugLogPath) {
                 _ = FileManager.default.createFile(atPath: debugLogPath, contents: nil)
@@ -106,8 +112,16 @@ public class StatsEngine {
             debugLogHandle = FileHandle(forWritingAtPath: debugLogPath)
         }
         guard let handle = debugLogHandle else { return }
-        handle.seekToEndOfFile()
-        handle.write(data)
+
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } catch {
+            // The file may have been removed or rotated externally. Drop the
+            // stale handle so the next call recreates it.
+            handle.closeFile()
+            debugLogHandle = nil
+        }
     }
     
     // Active temperature keys grouped by cluster (e.g. CPU, GPU)
