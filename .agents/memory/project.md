@@ -135,7 +135,6 @@
 | Issue | Status | Workaround |
 |---|---|---|
 | SDK version mismatch | Fixed | Hardcoded SDK path in build.sh |
-| Network: ignores VPN/utun | Open | By design - only "en" interfaces |
 | Top Processes: subprocess overhead | Open | Acceptable - only on menu open |
 | Timer fired 2x per interval | Fixed | Timer now uses unscheduled Timer() + RunLoop.add(.common) |
 | CPU delta integer overflow | Fixed | Cast Int32->Int64 before subtraction, clamp to 0 |
@@ -144,10 +143,9 @@
 | Fahrenheit in menu shows Celsius value | Fixed | PR 8 - added C->F conversion |
 | RAM color stale when % crosses threshold | Fixed | PR 9 - added memPercent to cache key |
 | Menu values freeze while open | Fixed | PR 10 - defer cleanup to menuDidClose |
-| Network spike on interface change | Fixed | PR 11 - clamp delta to 0 |
 | sp78 signed parse incorrect | Fixed | PR 12 - use Int16 big-endian |
 | SMC fallback float false positive | Fixed | PR 12 - removed unsafe default case |
-| Duplicated format logic | Fixed | PR 13 - shared formatNetworkSpeed() |
+| Duplicated format logic | Fixed | PR 13 - shared formatting helpers |
 
 ---
 

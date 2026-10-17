@@ -99,7 +99,7 @@ let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqu
 ### Menu Bar Width Is Wrong
 ```swift
 // Width must always go through calculateWidth() — never hardcode
-let width = UnifiedStatsView.calculateWidth(showNetwork: showNetworkSpeeds, showTemperature: showCPUTemperature)
+let width = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
 statusItem.length = width
 ```
 

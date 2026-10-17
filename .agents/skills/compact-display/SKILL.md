@@ -56,21 +56,21 @@ public var displayMode: DisplayMode = .normal {
 }
 
 // Update calculateWidth() to account for mode
-public static func calculateWidth(showNetwork: Bool, showTemperature: Bool, mode: DisplayMode) -> CGFloat {
+public static func calculateWidth(showTemperature: Bool, mode: DisplayMode) -> CGFloat {
+    let cpuMemW: CGFloat
+    let tempW: CGFloat
+
     switch mode {
     case .normal:
-        let netW: CGFloat  = showNetwork     ? 30.0 : 0.0
-        let cpuMemW: CGFloat = showNetwork   ? 40.0 : 38.0
-        let tempW: CGFloat = showTemperature ? 21.0 : 0.0
-        return netW + cpuMemW + tempW
+        cpuMemW = 38.0
+        tempW = showTemperature ? 21.0 : 0.0
     case .compact:
-        let netW: CGFloat  = showNetwork     ? 22.0 : 0.0
-        let cpuMemW: CGFloat = 30.0
-        let tempW: CGFloat = showTemperature ? 16.0 : 0.0
-        return netW + cpuMemW + tempW
+        cpuMemW = 30.0
+        tempW = showTemperature ? 16.0 : 0.0
     case .minimal:
         return 38.0  // CPU% and RAM GB only
     }
+    return cpuMemW + tempW
 }
 ```
 
@@ -79,17 +79,14 @@ public static func calculateWidth(showNetwork: Bool, showTemperature: Bool, mode
 ## Step 3: Modify draw() In StatusBarView.swift
 
 ```swift
-// Inside draw(), check mode before formatting output:
+// Inside draw(), check displayMode before formatting output:
 switch displayMode {
 case .normal:
-    let (val, unit) = formatSpeed(_uploadBPS)
-    // draw val and unit separately
+    // Full CPU/RAM values plus the temperature unit column.
 case .compact:
-    let (val, unit) = formatSpeed(_uploadBPS)
-    let shortUnit = String(unit.prefix(1))  // "K" instead of "KB"
-    // draw val and shortUnit
+    // Shorter labels and smaller fonts for CPU/RAM.
 case .minimal:
-    break  // Skip network entirely
+    // CPU% and RAM GB only; skip the temperature column.
 }
 ```
 
