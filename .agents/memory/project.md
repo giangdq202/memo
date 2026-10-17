@@ -17,6 +17,15 @@
 - **Static Menu Skeleton**: Cached About, Activity Monitor, Settings, GitHub, and Quit menu items plus their submenus. Each open reuses those items and rebuilds only the dynamic summary, temperature, and process rows.
 - **Menu State Refresh**: Centralized on/off state updates for cached settings items in `updateStaticMenuStates()`, keeping submenu checkmarks in sync without rebuilding them.
 
+### 2026-10-17: Deprecation Cleanup & Shared Helpers
+- **UserDefaults**: Removed the deprecated `UserDefaults.standard.synchronize()` call; modern Foundation writes are persisted automatically.
+- **FileHandle APIs**: Replaced `readDataToEndOfFile()` with `try? readToEnd()` and `closeFile()` with `try? close()`.
+- **Temperature Helper**: Extracted shared `formatTemperature` / `formatTemperatureValue` helpers so Celsius-to-Fahrenheit conversion lives in one place.
+- **Draw Path**: Temperature strings are formatted only when the cached line is invalidated, not on every draw pass.
+- **Network Unit Mode**: `formatNetworkSpeed` now requires an explicit `NetworkUnitMode`, removing the last `UserDefaults` read from the draw path.
+- **Top-Process Cache**: Cached `fetchTopProcesses(limit:)` for two seconds, avoiding repeated `/bin/ps` spawns when the menu is reopened quickly.
+- **CI Verification**: Added `codesign --verify --deep --strict` and an executable check after the CI build.
+
 ### 2026-10-14: Core Optimizations & Logic Fixes
 - **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
 - **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.

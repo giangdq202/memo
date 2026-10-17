@@ -148,3 +148,27 @@
 - `NSMenuItem` can belong to only one `NSMenu` at a time. To reuse a cached item, remove it from its previous menu before adding it to the new one.
 - Cache only items whose content does not depend on live data (About, Settings, Quit); keep dynamic rows fresh.
 - Centralize state updates for cached checkmark items so submenus stay in sync without a full rebuild.
+
+---
+
+## Session 7 - 2026-10-17: Deprecation Cleanup & Shared Helpers
+
+### Concepts Learned
+
+**Modern FileHandle APIs**
+- `readDataToEndOfFile()` and `closeFile()` are deprecated. Use `try? handle.readToEnd()` (falling back to `Data()`) and `try? handle.close()` so errors do not crash the sampling path.
+
+**Shared Formatting Helpers**
+- Keep unit conversion in one place. `formatTemperature(_:unit:)` returns the full display string, while `formatTemperatureValue(_:unit:)` returns only the number the menu bar draws next to a separate unit label.
+
+**Cache-Guarded Formatting**
+- Compute display strings only inside the cache-invalidation branch. Formatting on every `draw()` wastes work even when the rendered string has not changed.
+
+**Explicit Dependencies**
+- Making `mode: NetworkUnitMode` a required parameter removes the hidden `UserDefaults` read from the render path and forces callers to pass the already-cached value.
+
+**Short-Lived Subprocess Caching**
+- A two-second TTL around `fetchTopProcesses` avoids re-spawning `/bin/ps` when the menu is reopened quickly, while keeping the data fresh enough for an interactive menu.
+
+**CI as a Gate**
+- Adding `codesign --verify --deep --strict` and an executable check after the build catches broken bundles before a release.
