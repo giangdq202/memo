@@ -2,6 +2,12 @@
 
 ## Architectural Decisions
 
+### 2026-10-17: History Sparkline
+- **Ring Buffers**: `cpuHistory`, `ramHistory`, and `tempHistory` keep the last 60 samples and are appended on every tick in `updateStats()`.
+- **Metric Selection**: `sparklineMetric` stores `""` (off), `"cpu"`, `"ram"`, or `"temp"`; the History Graph submenu exposes those choices.
+- **Dropdown Rendering**: When enabled, the full menu inserts a `SparklineView` custom view whose updater redraws from the current history on every tick.
+- **Shared Drawing**: `SparklineView` auto-scales to the sample range, draws a faint baseline, and takes its stroke color from the existing metric color helpers.
+
 ### 2026-10-17: Configurable Threshold Alerts
 - **User-Configurable Thresholds**: `cpuAlertThreshold`, `ramAlertThreshold`, and `tempAlertThreshold` are stored in `UserDefaults`; `0` disables that alert. Preset levels are exposed through submenus, so nothing is hardcoded in the alert logic.
 - **Permission on Demand**: `UNUserNotificationCenter` authorization is requested only when the user selects a non-zero threshold, keeping first-run silent.

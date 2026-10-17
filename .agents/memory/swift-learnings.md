@@ -252,3 +252,22 @@
 
 **Reusing Cached Submenus**
 - Building alert submenus once and storing them alongside the other cached settings items means the quick settings menu gets them for free.
+
+---
+
+## Session 13 - 2026-10-17: History Sparkline
+
+### Concepts Learned
+
+**Ring Buffers with `removeFirst`**
+- Appending to an array and trimming with `buffer.removeFirst(buffer.count - capacity)` is a simple bounded history for small capacities. For large buffers a true ring buffer with a head index would avoid the copy, but 60 samples is negligible.
+
+**Custom Views Inside Menus**
+- `NSMenuItem.view` accepts any `NSView`. Give the item an empty title and a fixed-height view; the menu sizes the row from the view's frame. The existing provisional-item plus width-filling builder pattern works for graphs too.
+
+**Auto-Scaled Drawing**
+- A sparkline does not need a fixed 0-100 scale. Computing `minimum`, `maximum`, and clamping the span to at least 1 makes the shape readable for CPU, RAM, and temperature alike.
+- Draw a faint baseline for visual anchoring, then stroke the polyline with the metric's existing color helper.
+
+**Update While Menu Is Open**
+- Registering the sparkline's updater in `activeMenuUpdaters` means the graph refreshes on each timer tick while the dropdown is open, then is cleared in `menuDidClose`.
