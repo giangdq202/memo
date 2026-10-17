@@ -11,6 +11,12 @@
 - **Debug Log Handle**: Reused a single `/tmp/memo_debug.log` file handle and recreates it when the file is removed externally, avoiding open/close pairs for every log line.
 - **Auto Unit Thresholds**: Aligned Auto network-unit thresholds to a consistent 1024 base, avoiding the transient "1000 K" display.
 
+### 2026-10-17: Follow-up Rescan & Menu Caching
+- **Periodic Temperature Rescan**: Re-scan SMC temperature keys every 30 seconds and merge newly active sensors into the existing groups. Sensors that were asleep at launch can now appear later without removing stable keys.
+- **Top-Process Cleanup**: Removed the redundant `waitUntilExit()` after `readDataToEndOfFile()`; EOF already means `ps` has finished, and the local `Process` value is released when the function returns.
+- **Static Menu Skeleton**: Cached About, Activity Monitor, Settings, GitHub, and Quit menu items plus their submenus. Each open reuses those items and rebuilds only the dynamic summary, temperature, and process rows.
+- **Menu State Refresh**: Centralized on/off state updates for cached settings items in `updateStaticMenuStates()`, keeping submenu checkmarks in sync without rebuilding them.
+
 ### 2026-10-14: Core Optimizations & Logic Fixes
 - **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
 - **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.

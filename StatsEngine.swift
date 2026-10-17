@@ -128,6 +128,8 @@ public class StatsEngine {
     private var activeTempKeys: [String: [String]] = [:]
     private var cachedTempValues: [String: Double] = [:]
     private var tempSampleTick = 0
+    private var lastTempKeyScan: CFAbsoluteTime = 0
+    private let tempKeyScanInterval: CFAbsoluteTime = 30.0
 
     public init() {
         var pageSize: vm_size_t = 4096
@@ -135,6 +137,7 @@ public class StatsEngine {
         cachedPageSize = UInt64(pageSize)
         
         self.activeTempKeys = scanActiveTempKeys()
+        self.lastTempKeyScan = CFAbsoluteTimeGetCurrent()
     }
     
     private func scanActiveTempKeys() -> [String: [String]] {
@@ -172,6 +175,21 @@ public class StatsEngine {
         
         // Remove empty groups
         return groups.filter { !$0.value.isEmpty }
+    }
+
+    /// Re-runs the SMC scan and merges any newly active keys into the existing
+    /// groups. Existing keys are kept so a sensor that briefly reports an
+    /// out-of-range value does not disappear from the menu bar.
+    private func rescanActiveTempKeys() {
+        lastTempKeyScan = CFAbsoluteTimeGetCurrent()
+        let discovered = scanActiveTempKeys()
+        for (group, keys) in discovered {
+            var existing = activeTempKeys[group] ?? []
+            for key in keys where !existing.contains(key) {
+                existing.append(key)
+            }
+            activeTempKeys[group] = existing
+        }
     }
 
     deinit {
@@ -242,6 +260,10 @@ public class StatsEngine {
         
         self.prevCpuInfo = cpuInfo
         self.prevCpuInfoCount = cpuInfoCount
+        
+        if CFAbsoluteTimeGetCurrent() - lastTempKeyScan >= tempKeyScanInterval {
+            rescanActiveTempKeys()
+        }
         
         // Calculate CPU average temperature and cluster temperatures.
         // Only one cluster is sampled per tick; cached values keep the other
@@ -463,8 +485,9 @@ public class StatsEngine {
         task.standardError = FileHandle.nullDevice
 
         guard (try? task.run()) != nil else { return ([], []) }
+        // Reading to EOF returns when stdout closes. We don't need the exit
+        // status and stderr is discarded, so an explicit waitUntilExit is unnecessary.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
         guard let output = String(data: data, encoding: .utf8) else { return ([], []) }
 
         // Exclude our own app from the ranking.
