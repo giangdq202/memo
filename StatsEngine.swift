@@ -144,6 +144,7 @@ public class StatsEngine {
             let prevSize = MemoryLayout<integer_t>.size * Int(prevCpuInfoCount)
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevSize))
         }
+        mach_port_deallocate(mach_task_self_, hostPort)
     }
 
     // MARK: - CPU Sampling
