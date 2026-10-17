@@ -10,19 +10,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     private var currentCpuStats = CPUStats()
     private var currentMemStats = MemoryStats()
-    private var currentNetStats = NetworkStats()
     
     private var activeMenuUpdaters: [() -> Void] = []
 
     // Static menu items are built once and reused across menu opens.
     private var cachedVersionItem: NSMenuItem?
     private var cachedActivityItem: NSMenuItem?
-    private var cachedShowNetworkItem: NSMenuItem?
     private var cachedShowTemperatureItem: NSMenuItem?
     private var cachedLaunchAtLoginItem: NSMenuItem?
     private var cachedIntervalSubmenu: NSMenu?
     private var cachedTempUnitSubmenu: NSMenu?
-    private var cachedNetworkUnitSubmenu: NSMenu?
     private var cachedGitHubItem: NSMenuItem?
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
@@ -53,15 +50,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupStatusItem() {
         let statusBar = NSStatusBar.system
         
-        let initialWidth = UnifiedStatsView.calculateWidth(showNetwork: showNetworkSpeeds, showTemperature: showCPUTemperature)
+        let initialWidth = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
         view.onRightClick = { [weak self] in self?.showQuickSettingsMenu() }
         
-        view.showNetwork = showNetworkSpeeds
         view.showTemperature = showCPUTemperature
-        view.networkUnitMode = networkUnitMode
         
         statusItem = item
         statsView = view
@@ -91,7 +86,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStats() {
         currentCpuStats = statsEngine.fetchCPUStats()
         currentMemStats = statsEngine.fetchMemoryStats()
-        currentNetStats = statsEngine.fetchNetworkStats()
         
         renderCurrentStats()
     }
@@ -103,9 +97,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             tempUnit: tempUnit,
             memGB: currentMemStats.usedGB,
             memPercent: currentMemStats.usedPercent,
-            pressureLevel: currentMemStats.pressureLevel,
-            uploadBytesPerSec: currentNetStats.uploadBytesPerSec,
-            downloadBytesPerSec: currentNetStats.downloadBytesPerSec
+            pressureLevel: currentMemStats.pressureLevel
         )
         
         for updater in activeMenuUpdaters {
@@ -131,10 +123,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func buildSettingsItems() {
-        let showNetItem = NSMenuItem(title: "Show Network Speeds", action: #selector(toggleShowNetwork(_:)), keyEquivalent: "")
-        showNetItem.target = self
-        cachedShowNetworkItem = showNetItem
-
         let showTempItem = NSMenuItem(title: "Show CPU Temperature", action: #selector(toggleShowTemperature(_:)), keyEquivalent: "")
         showTempItem.target = self
         cachedShowTemperatureItem = showTempItem
@@ -172,25 +160,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tempUnitItem.submenu = tempUnitSubmenu
         cachedTempUnitSubmenu = tempUnitSubmenu
 
-        let netUnitSubmenu = NSMenu()
-        let netUnits: [(String, NetworkUnitMode)] = [
-            ("Auto (B, K, M, G)", .auto),
-            ("Binary (B, KiB, MiB, GiB)", .binary),
-            ("Decimal (B, KB, MB, GB)", .decimal),
-            ("Bits (bps, Kbps, Mbps)", .bits)
-        ]
-        for (label, mode) in netUnits {
-            let item = NSMenuItem(title: label, action: #selector(changeNetworkUnit(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = mode.rawValue
-            netUnitSubmenu.addItem(item)
-        }
-        let netUnitItem = NSMenuItem(title: "Network Unit", action: nil, keyEquivalent: "")
-        netUnitItem.submenu = netUnitSubmenu
-        cachedNetworkUnitSubmenu = netUnitSubmenu
-
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showNetItem, showTempItem, autoStartItem, refreshItem, tempUnitItem, netUnitItem]
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem]
     }
 
     private func buildFooterItems() {
@@ -212,7 +183,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateStaticMenuStates() {
-        cachedShowNetworkItem?.state = showNetworkSpeeds ? .on : .off
         cachedShowTemperatureItem?.state = showCPUTemperature ? .on : .off
         cachedLaunchAtLoginItem?.state = isLaunchAtLoginEnabled ? .on : .off
 
@@ -227,13 +197,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for item in submenu.items {
                 if let key = item.representedObject as? String {
                     item.state = (tempUnit == key) ? .on : .off
-                }
-            }
-        }
-        if let submenu = cachedNetworkUnitSubmenu {
-            for item in submenu.items {
-                if let raw = item.representedObject as? Int, let mode = NetworkUnitMode(rawValue: raw) {
-                    item.state = (networkUnitMode == mode) ? .on : .off
                 }
             }
         }
@@ -310,21 +273,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 let color = (tNew > 0) ? colorForTemperature(tNew, isDark: isDark) : .secondaryLabelColor
                 updateBlock(newStr, color)
-            }
-            return (view, updater)
-        }))
-        menu.addItem(NSMenuItem.separator())
-
-        // --- Network Summary Section ---
-        let netItem = NSMenuItem(title: "en0      ↑ 100.0 MB/s  ↓ 100.0 MB/s", action: nil, keyEquivalent: "")
-        netItem.isEnabled = false
-        menu.addItem(netItem)
-        customViews.append((netItem, { [weak self] width in 
-            guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = Self.networkRow(interface: self.currentNetStats.activeInterface, upBps: self.currentNetStats.uploadBytesPerSec, downBps: self.currentNetStats.downloadBytesPerSec, width: width, mode: self.networkUnitMode)
-            let updater = { [weak self] in
-                guard let self = self else { return }
-                updateBlock(self.currentNetStats.activeInterface, self.currentNetStats.uploadBytesPerSec, self.currentNetStats.downloadBytesPerSec)
             }
             return (view, updater)
         }))
@@ -578,23 +526,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     
-    private var showNetworkSpeeds: Bool {
-        get { UserDefaults.standard.object(forKey: "showNetworkSpeeds") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showNetworkSpeeds"); updateUIForSettingsChange() }
-    }
-    
     private var showCPUTemperature: Bool {
         get { UserDefaults.standard.object(forKey: "showCPUTemperature") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "showCPUTemperature"); updateUIForSettingsChange() }
-    }
-    
-    private var networkUnitMode: NetworkUnitMode {
-        get { NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: "networkUnitMode"); updateUIForSettingsChange() }
-    }
-    
-    @objc private func toggleShowNetwork(_ sender: NSMenuItem) {
-        showNetworkSpeeds.toggle()
     }
     
     @objc private func toggleShowTemperature(_ sender: NSMenuItem) {
@@ -602,16 +536,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     private func updateUIForSettingsChange() {
-        statsView?.showNetwork = showNetworkSpeeds
         statsView?.showTemperature = showCPUTemperature
-        statsView?.networkUnitMode = networkUnitMode
         updateStatusItemWidth()
         statsView?.needsDisplay = true
     }
 
     private func updateStatusItemWidth() {
         guard let statusItem = statusItem, let statsView = statsView else { return }
-        let width = UnifiedStatsView.calculateWidth(showNetwork: showNetworkSpeeds, showTemperature: showCPUTemperature)
+        let width = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
         statusItem.length = width
         statsView.frame.size.width = width
     }
@@ -619,12 +551,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func changeTempUnit(_ sender: NSMenuItem) {
         if let unit = sender.representedObject as? String {
             tempUnit = unit
-        }
-    }
-    
-    @objc private func changeNetworkUnit(_ sender: NSMenuItem) {
-        if let raw = sender.representedObject as? Int, let mode = NetworkUnitMode(rawValue: raw) {
-            networkUnitMode = mode
         }
     }
     
@@ -813,45 +739,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let updater: (String, NSColor) -> Void = { newStr, newColor in
             valueLabel.stringValue = newStr
             valueLabel.textColor = newColor
-        }
-        
-        return (container, updater)
-    }
-
-    private static func networkRow(interface: String, upBps: Double, downBps: Double, width: CGFloat, mode: NetworkUnitMode) -> (NSView, (String, Double, Double) -> Void) {
-        let leftInset: CGFloat = 21
-        let rightInset: CGFloat = 21
-        let font = NSFont.menuFont(ofSize: 0)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 20))
-
-        let nameLabel = NSTextField(labelWithString: interface)
-        nameLabel.font = font
-        nameLabel.textColor = .labelColor
-        nameLabel.frame = NSRect(x: leftInset, y: 2, width: 35, height: 16)
-        container.addSubview(nameLabel)
-
-        let upParts = formatNetworkSpeed(upBps, mode: mode)
-        let upStr = "↑ \(upParts.val) \(upParts.unit)"
-        let downParts = formatNetworkSpeed(downBps, mode: mode)
-        let downStr = "↓ \(downParts.val) \(downParts.unit)"
-        let speedsStr = "\(upStr)   \(downStr)"
-
-        let maxLabelWidth: CGFloat = 160
-        let valueLabel = NSTextField(labelWithString: speedsStr)
-        valueLabel.font = font
-        valueLabel.textColor = .secondaryLabelColor
-        valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: width - rightInset - maxLabelWidth, y: 2, width: maxLabelWidth, height: 16)
-        valueLabel.autoresizingMask = [.minXMargin]
-        container.addSubview(valueLabel)
-
-        let updater: (String, Double, Double) -> Void = { newIf, newUp, newDown in
-            nameLabel.stringValue = newIf
-            let newUpParts = formatNetworkSpeed(newUp, mode: mode)
-            let newUpStr = "↑ \(newUpParts.val) \(newUpParts.unit)"
-            let newDownParts = formatNetworkSpeed(newDown, mode: mode)
-            let newDownStr = "↓ \(newDownParts.val) \(newDownParts.unit)"
-            valueLabel.stringValue = "\(newUpStr)   \(newDownStr)"
         }
         
         return (container, updater)

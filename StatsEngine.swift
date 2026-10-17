@@ -1,7 +1,6 @@
 import Foundation
 import MachO
 import IOKit
-import SystemConfiguration
 
 public struct TempCluster {
     public let name: String
@@ -40,14 +39,6 @@ public struct MemoryStats {
     }
 }
 
-public struct NetworkStats {
-    public var uploadBytesPerSec: Double = 0.0
-    public var downloadBytesPerSec: Double = 0.0
-    public var totalSentBytes: UInt64 = 0
-    public var totalRecvBytes: UInt64 = 0
-    public var activeInterface: String = "en0"
-}
-
 public struct ProcessUsage {
     public let name: String
     public var cpuPercent: Double
@@ -66,36 +57,10 @@ public class StatsEngine {
     private var prevCpuInfo: processor_info_array_t?
     private var prevCpuInfoCount: mach_msg_type_number_t = 0
     
-    // Network delta tracking
-    private let dynamicStore: SCDynamicStore? = SCDynamicStoreCreate(nil, "MeMo" as CFString, nil, nil)
-    private var prevNetBytesSent: UInt64 = 0
-    private var prevNetBytesRecv: UInt64 = 0
-    private var prevNetTime: CFAbsoluteTime = 0
-    private var cachedActiveInterface: String = "en0"
-    private var cachedPrimaryInterface: String = "en0"
-    private var lastPrimaryInterfaceCheck: CFAbsoluteTime = 0
-    private let primaryInterfaceCacheTTL: CFAbsoluteTime = 5.0
+    // Top-process cache
     private var cachedTopProcesses: (limit: Int, byCPU: [ProcessUsage], byMemory: [ProcessUsage])?
     private var cachedTopProcessesTime: CFAbsoluteTime = 0
     private let topProcessCacheTTL: CFAbsoluteTime = 2.0
-    
-    /// Queries SystemConfiguration for the current primary IPv4 network interface.
-    /// The result is cached for a few seconds so the periodic tick does not hit
-    /// SystemConfiguration on every sample.
-    private func getPrimaryInterface() -> String {
-        let now = CFAbsoluteTimeGetCurrent()
-        if now - lastPrimaryInterfaceCheck < primaryInterfaceCacheTTL {
-            return cachedPrimaryInterface
-        }
-        lastPrimaryInterfaceCheck = now
-        
-        if let store = dynamicStore,
-           let ipv4 = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
-           let primaryInterface = ipv4["PrimaryInterface"] as? String {
-            cachedPrimaryInterface = primaryInterface
-        }
-        return cachedPrimaryInterface
-    }
     
     /// Appends a debug message to `/tmp/memo_debug.log` when `--debug` is active.
     /// The handle is kept open for the lifetime of the engine to avoid an
@@ -383,84 +348,6 @@ public class StatsEngine {
             writeDebugLog(log)
         }
         
-        return stats
-    }
-
-    // MARK: - Network Sampling
-    public func fetchNetworkStats() -> NetworkStats {
-        var stats = NetworkStats()
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-        
-        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
-            return stats
-        }
-        defer { freeifaddrs(ifaddr) }
-        
-        var currentBytesSent: UInt64 = 0
-        var currentBytesRecv: UInt64 = 0
-        
-        let primaryInterface = getPrimaryInterface()
-        let interfaceChanged = (primaryInterface != cachedActiveInterface)
-        if interfaceChanged {
-            cachedActiveInterface = primaryInterface
-        }
-        
-        var ptr: UnsafeMutablePointer<ifaddrs>? = firstAddr
-        while let curr = ptr {
-            let flags = Int32(curr.pointee.ifa_flags)
-            let isUp = (flags & IFF_UP) != 0
-            let isRunning = (flags & IFF_RUNNING) != 0
-            let isLoopback = (flags & IFF_LOOPBACK) != 0
-            
-            if isUp && isRunning && !isLoopback,
-               let addr = curr.pointee.ifa_addr,
-               addr.pointee.sa_family == UInt8(AF_LINK),
-               let namePtr = curr.pointee.ifa_name,
-               strcmp(namePtr, primaryInterface) == 0,
-               let data = curr.pointee.ifa_data {
-                let ifData = data.assumingMemoryBound(to: if_data.self)
-                currentBytesRecv += UInt64(ifData.pointee.ifi_ibytes)
-                currentBytesSent += UInt64(ifData.pointee.ifi_obytes)
-            }
-            ptr = curr.pointee.ifa_next
-        }
-        
-        stats.totalSentBytes = currentBytesSent
-        stats.totalRecvBytes = currentBytesRecv
-        stats.activeInterface = cachedActiveInterface
-        
-        let now = CFAbsoluteTimeGetCurrent()
-        if prevNetTime > 0 && !interfaceChanged {
-            let dt = now - prevNetTime
-            if dt > 0 {
-                // When the total drops (e.g. an interface disconnected and its
-                // counters reset), treat the delta as zero rather than assuming a
-                // UInt32 wrap — counters are summed across interfaces, so the old
-                // wrap formula doesn't apply. The next sample will be correct.
-                let sentDelta = currentBytesSent >= prevNetBytesSent
-                    ? currentBytesSent - prevNetBytesSent : 0
-                let recvDelta = currentBytesRecv >= prevNetBytesRecv
-                    ? currentBytesRecv - prevNetBytesRecv : 0
-                
-                stats.uploadBytesPerSec = Double(sentDelta) / dt
-                stats.downloadBytesPerSec = Double(recvDelta) / dt
-                
-                // Spike filter: drop impossibly large speeds (e.g. > 100 Gbps or 12.5 GB/s)
-                let maxReasonable: Double = 12_500_000_000
-                if stats.uploadBytesPerSec > maxReasonable { stats.uploadBytesPerSec = 0 }
-                if stats.downloadBytesPerSec > maxReasonable { stats.downloadBytesPerSec = 0 }
-            }
-        }
-        
-        self.prevNetBytesSent = currentBytesSent
-        self.prevNetBytesRecv = currentBytesRecv
-        self.prevNetTime = now
-
-        if isDebugMode {
-            let log = "[DEBUG NET] Interface: \(stats.activeInterface) | Up: \(String(format: "%.0f", stats.uploadBytesPerSec)) B/s | Down: \(String(format: "%.0f", stats.downloadBytesPerSec)) B/s\n"
-            writeDebugLog(log)
-        }
-
         return stats
     }
 
