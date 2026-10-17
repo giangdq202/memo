@@ -59,6 +59,8 @@ public class StatsEngine {
     private let hostPort: mach_port_t = mach_host_self()
     private let totalPhysicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
     private let cachedPageSize: UInt64
+    private let debugLogPath = "/tmp/memo_debug.log"
+    private var debugLogHandle: FileHandle?
     
     // CPU delta tracking
     private var prevCpuInfo: processor_info_array_t?
@@ -70,31 +72,62 @@ public class StatsEngine {
     private var prevNetBytesRecv: UInt64 = 0
     private var prevNetTime: CFAbsoluteTime = 0
     private var cachedActiveInterface: String = "en0"
+    private var cachedPrimaryInterface: String = "en0"
+    private var lastPrimaryInterfaceCheck: CFAbsoluteTime = 0
+    private let primaryInterfaceCacheTTL: CFAbsoluteTime = 5.0
     
     /// Queries SystemConfiguration for the current primary IPv4 network interface.
+    /// The result is cached for a few seconds so the periodic tick does not hit
+    /// SystemConfiguration on every sample.
     private func getPrimaryInterface() -> String {
+        let now = CFAbsoluteTimeGetCurrent()
+        if now - lastPrimaryInterfaceCheck < primaryInterfaceCacheTTL {
+            return cachedPrimaryInterface
+        }
+        lastPrimaryInterfaceCheck = now
+        
         if let store = dynamicStore,
            let ipv4 = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
            let primaryInterface = ipv4["PrimaryInterface"] as? String {
-            return primaryInterface
+            cachedPrimaryInterface = primaryInterface
         }
-        return "en0"
+        return cachedPrimaryInterface
     }
     
     /// Appends a debug message to `/tmp/memo_debug.log` when `--debug` is active.
+    /// The handle is kept open for the lifetime of the engine to avoid an
+    /// open/close pair for every log line.
     private func writeDebugLog(_ message: String) {
         guard let data = message.data(using: .utf8) else { return }
-        if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
-            handle.seekToEndOfFile()
-            handle.write(data)
+        if debugLogHandle != nil && !FileManager.default.fileExists(atPath: debugLogPath) {
+            // Writing to an unlinked file succeeds silently, so detect external
+            // deletion before reusing the handle.
+            debugLogHandle?.closeFile()
+            debugLogHandle = nil
+        }
+        if debugLogHandle == nil {
+            if !FileManager.default.fileExists(atPath: debugLogPath) {
+                _ = FileManager.default.createFile(atPath: debugLogPath, contents: nil)
+            }
+            debugLogHandle = FileHandle(forWritingAtPath: debugLogPath)
+        }
+        guard let handle = debugLogHandle else { return }
+
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } catch {
+            // The file may have been removed or rotated externally. Drop the
+            // stale handle so the next call recreates it.
             handle.closeFile()
-        } else {
-            try? message.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
+            debugLogHandle = nil
         }
     }
     
     // Active temperature keys grouped by cluster (e.g. CPU, GPU)
     private var activeTempKeys: [String: [String]] = [:]
+    private var cachedTempValues: [String: Double] = [:]
+    private var tempSampleTick = 0
 
     public init() {
         var pageSize: vm_size_t = 4096
@@ -108,7 +141,9 @@ public class StatsEngine {
         let smc = SMC.shared
         func isActive(_ key: String) -> Bool {
             guard let val = smc.getValue(key) else { return false }
-            return val > 15.0 && val < 110.0
+            guard val > 15.0 && val < 110.0 else { return false }
+            cachedTempValues[key] = val
+            return true
         }
 
         var groups: [String: [String]] = [
@@ -144,6 +179,8 @@ public class StatsEngine {
             let prevSize = MemoryLayout<integer_t>.size * Int(prevCpuInfoCount)
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevSize))
         }
+        mach_port_deallocate(mach_task_self_, hostPort)
+        debugLogHandle?.closeFile()
     }
 
     // MARK: - CPU Sampling
@@ -154,7 +191,16 @@ public class StatsEngine {
         var cpuInfoCount: mach_msg_type_number_t = 0
         
         let result = host_processor_info(hostPort, PROCESSOR_CPU_LOAD_INFO, &numCPUs, &cpuInfo, &cpuInfoCount)
-        guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else {
+        if result != KERN_SUCCESS {
+            if let cpuInfo = cpuInfo {
+                let size = MemoryLayout<integer_t>.size * Int(cpuInfoCount)
+                if size > 0 {
+                    vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), vm_size_t(size))
+                }
+            }
+            return stats
+        }
+        guard let cpuInfo = cpuInfo else {
             return stats
         }
         
@@ -197,37 +243,55 @@ public class StatsEngine {
         self.prevCpuInfo = cpuInfo
         self.prevCpuInfoCount = cpuInfoCount
         
-        // Calculate CPU average temperature and cluster temperatures
+        // Calculate CPU average temperature and cluster temperatures.
+        // Only one cluster is sampled per tick; cached values keep the other
+        // clusters usable without issuing IOKit calls for every sensor.
         if !activeTempKeys.isEmpty {
             let clusterOrder = ["P-Cores", "E-Cores", "GPU", "Other CPU"]
+            let groupsToSample = clusterOrder.filter { activeTempKeys[$0] != nil }
+            let smc = SMC.shared
+
+            if !groupsToSample.isEmpty {
+                let groupName = groupsToSample[tempSampleTick % groupsToSample.count]
+                tempSampleTick &+= 1
+
+                if let keys = activeTempKeys[groupName] {
+                    for key in keys {
+                        if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
+                            cachedTempValues[key] = val
+                        } else {
+                            cachedTempValues.removeValue(forKey: key)
+                        }
+                    }
+                }
+            }
+
             var coreSum: Double = 0.0
             var coreCount = 0
             var fallbackSum: Double = 0.0
             var fallbackCount = 0
-            let smc = SMC.shared
-            
+
             for groupName in clusterOrder {
                 guard let keys = activeTempKeys[groupName] else { continue }
                 var groupSum: Double = 0.0
                 var groupCount = 0
                 for key in keys {
-                    if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
-                        groupSum += val
-                        groupCount += 1
-                        if groupName == "P-Cores" || groupName == "E-Cores" {
-                            coreSum += val
-                            coreCount += 1
-                        } else if groupName == "Other CPU" {
-                            fallbackSum += val
-                            fallbackCount += 1
-                        }
+                    guard let val = cachedTempValues[key] else { continue }
+                    groupSum += val
+                    groupCount += 1
+                    if groupName == "P-Cores" || groupName == "E-Cores" {
+                        coreSum += val
+                        coreCount += 1
+                    } else if groupName == "Other CPU" {
+                        fallbackSum += val
+                        fallbackCount += 1
                     }
                 }
                 if groupCount > 0 {
                     stats.tempClusters.append(TempCluster(name: groupName, temperature: groupSum / Double(groupCount)))
                 }
             }
-            
+
             if coreCount > 0 {
                 stats.temperature = coreSum / Double(coreCount)
             } else if fallbackCount > 0 {
@@ -324,7 +388,8 @@ public class StatsEngine {
             let isLoopback = (flags & IFF_LOOPBACK) != 0
             
             if isUp && isRunning && !isLoopback,
-               curr.pointee.ifa_addr.pointee.sa_family == UInt8(AF_LINK),
+               let addr = curr.pointee.ifa_addr,
+               addr.pointee.sa_family == UInt8(AF_LINK),
                let namePtr = curr.pointee.ifa_name,
                strcmp(namePtr, primaryInterface) == 0,
                let data = curr.pointee.ifa_data {

@@ -110,3 +110,24 @@
 
 **SMAppService vs LaunchAgent Single Source of Truth**
 - On macOS 13+, `SMAppService.mainApp.register()` handles startup items. Returning immediately upon success and cleaning up any legacy `~/Library/LaunchAgents/*.plist` prevents dual registration and duplicate instance launches.
+
+---
+
+## Session 5 - 2026-10-17: Correctness Hardening & Per-Tick Efficiency
+
+### Concepts Learned
+
+**Optional C Pointers**
+- `UnsafeMutablePointer` fields coming from C APIs may be `NULL`; bind them with `guard let`/`if let` before dereferencing. A chained optional unwrap in an `if` condition is evaluated left to right, so put the pointer check before `.pointee`.
+
+**Mach Port Lifetime**
+- `mach_host_self()` returns a send right. Balance it with `mach_port_deallocate(mach_task_self_, port)` in `deinit`, just like `vm_deallocate` for processor-info buffers.
+
+**Sampling Budget Design**
+- Instead of reading every SMC temperature key on every tick, rotate one sensor group per tick and keep last-known values in a dictionary. This bounds IOKit work while preserving a complete cluster display.
+
+**Caching with a Time Budget**
+- A short TTL cache for `SCDynamicStore` primary-interface queries removes per-tick IPC overhead. A five-second stale window is acceptable for menu-bar network statistics.
+
+**Reusing File Handles**
+- Keep a single `FileHandle` open for append-only debug logging; close it in `deinit`. This avoids syscall and allocation overhead on every log line. If the file may be deleted or rotated externally, check existence before writing and reopen, because writes to an unlinked file succeed silently.
