@@ -152,18 +152,19 @@ public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, m
     return (String(format: "%.0f", val), lastUnit)
 }
 
-/// Shared temperature representation. `formatTemperature` returns the full
-/// value plus unit (for menu rows); `formatTemperatureValue` returns only the
-/// numeric string (for the menu bar, which draws the unit separately).
+/// Converts a Celsius reading to the requested unit.
 private func convertedTemperature(_ celsius: Double, unit: String) -> Double {
     return unit == "F" ? celsius * 1.8 + 32.0 : celsius
 }
 
+/// Returns the full temperature display string (value plus unit) for menu rows.
 public func formatTemperature(_ celsius: Double, unit: String) -> String {
     guard celsius > 0 else { return "--" }
     return String(format: "%.0f°%@", convertedTemperature(celsius, unit: unit), unit)
 }
 
+/// Returns only the numeric temperature string for the menu bar, which draws
+/// the unit separately.
 public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
     guard celsius > 0 else { return "--" }
     return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
