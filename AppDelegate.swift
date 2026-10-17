@@ -76,6 +76,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         currentMemStats = statsEngine.fetchMemoryStats()
         currentNetStats = statsEngine.fetchNetworkStats()
         
+        renderCurrentStats()
+    }
+    
+    private func renderCurrentStats() {
         statsView.updateValues(
             cpuPercent: currentCpuStats.usagePercent,
             cpuTemperature: currentCpuStats.temperature,
@@ -478,7 +482,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: "tempUnit")
-            updateStats()
+            renderCurrentStats()
         }
     }
     
