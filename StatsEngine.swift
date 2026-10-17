@@ -485,8 +485,8 @@ public class StatsEngine {
         task.standardError = FileHandle.nullDevice
 
         guard (try? task.run()) != nil else { return ([], []) }
-        // Reading to EOF returns only after `ps` has closed stdout, so the
-        // process has already finished; an explicit waitUntilExit is redundant.
+        // Reading to EOF returns when stdout closes. We don't need the exit
+        // status and stderr is discarded, so an explicit waitUntilExit is unnecessary.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else { return ([], []) }
 
