@@ -19,11 +19,11 @@ let otherInstances = NSRunningApplication.runningApplications(withBundleIdentifi
 if !otherInstances.isEmpty {
     otherInstances.forEach { $0.terminate() }
     // Give the old instances a brief window to release their status items.
-    let deadline = Date().addingTimeInterval(2.0)
+    let deadline = Date().addingTimeInterval(0.5)
     while Date() < deadline,
           NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
             .contains(where: { $0.processIdentifier != currentPID && !$0.isTerminated }) {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
     }
     // Force-terminate anything still lingering.
     NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
