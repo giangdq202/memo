@@ -102,7 +102,7 @@ public class StatsEngine {
         if debugLogHandle != nil && !FileManager.default.fileExists(atPath: debugLogPath) {
             // Writing to an unlinked file succeeds silently, so detect external
             // deletion before reusing the handle.
-            debugLogHandle?.closeFile()
+            try? debugLogHandle?.close()
             debugLogHandle = nil
         }
         if debugLogHandle == nil {
@@ -119,7 +119,7 @@ public class StatsEngine {
         } catch {
             // The file may have been removed or rotated externally. Drop the
             // stale handle so the next call recreates it.
-            handle.closeFile()
+            try? handle.close()
             debugLogHandle = nil
         }
     }
@@ -198,7 +198,7 @@ public class StatsEngine {
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevSize))
         }
         mach_port_deallocate(mach_task_self_, hostPort)
-        debugLogHandle?.closeFile()
+        try? debugLogHandle?.close()
     }
 
     // MARK: - CPU Sampling
@@ -487,7 +487,7 @@ public class StatsEngine {
         guard (try? task.run()) != nil else { return ([], []) }
         // Reading to EOF returns when stdout closes. We don't need the exit
         // status and stderr is discarded, so an explicit waitUntilExit is unnecessary.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
         guard let output = String(data: data, encoding: .utf8) else { return ([], []) }
 
         // Exclude our own app from the ranking.
