@@ -14,6 +14,19 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     private var activeMenuUpdaters: [() -> Void] = []
 
+    // Static menu items are built once and reused across menu opens.
+    private var cachedVersionItem: NSMenuItem?
+    private var cachedActivityItem: NSMenuItem?
+    private var cachedShowNetworkItem: NSMenuItem?
+    private var cachedShowTemperatureItem: NSMenuItem?
+    private var cachedLaunchAtLoginItem: NSMenuItem?
+    private var cachedIntervalSubmenu: NSMenu?
+    private var cachedTempUnitSubmenu: NSMenu?
+    private var cachedNetworkUnitSubmenu: NSMenu?
+    private var cachedGitHubItem: NSMenuItem?
+    private var cachedQuitItem: NSMenuItem?
+    private var cachedSettingsParentItems: [NSMenuItem] = []
+
     // MARK: - Persisted Settings Helpers
 
     private var updateInterval: TimeInterval {
@@ -96,19 +109,149 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     
+    private func buildAboutItem() {
+        let versionStr = BUILD_VERSION
+        let item = NSMenuItem(title: "MeMo v\(versionStr)", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        item.attributedTitle = NSAttributedString(string: "MeMo v\(versionStr)", attributes: [
+            .foregroundColor: NSColor.tertiaryLabelColor,
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        ])
+        cachedVersionItem = item
+    }
+
+    private func buildActivityItem() {
+        let item = NSMenuItem(title: "Open Activity Monitor", action: #selector(openActivityMonitor), keyEquivalent: "")
+        item.target = self
+        cachedActivityItem = item
+    }
+
+    private func buildSettingsItems() {
+        let showNetItem = NSMenuItem(title: "Show Network Speeds", action: #selector(toggleShowNetwork(_:)), keyEquivalent: "")
+        showNetItem.target = self
+        cachedShowNetworkItem = showNetItem
+
+        let showTempItem = NSMenuItem(title: "Show CPU Temperature", action: #selector(toggleShowTemperature(_:)), keyEquivalent: "")
+        showTempItem.target = self
+        cachedShowTemperatureItem = showTempItem
+
+        let autoStartItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
+        autoStartItem.target = self
+        cachedLaunchAtLoginItem = autoStartItem
+
+        let intervalSubmenu = NSMenu()
+        let intervals: [(String, TimeInterval)] = [
+            ("Ultra Fast (250 ms)", 0.25),
+            ("Fast (500 ms)", 0.5),
+            ("Normal (1 s)", 1.0),
+            ("Slow (2 s)", 2.0),
+            ("Very Slow (5 s)", 5.0)
+        ]
+        for (label, sec) in intervals {
+            let item = NSMenuItem(title: label, action: #selector(changeInterval(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = sec
+            intervalSubmenu.addItem(item)
+        }
+        let refreshItem = NSMenuItem(title: "Update Interval", action: nil, keyEquivalent: "")
+        refreshItem.submenu = intervalSubmenu
+        cachedIntervalSubmenu = intervalSubmenu
+
+        let tempUnitSubmenu = NSMenu()
+        for (label, key) in [("Celsius (°C)", "C"), ("Fahrenheit (°F)", "F")] {
+            let item = NSMenuItem(title: label, action: #selector(changeTempUnit(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = key
+            tempUnitSubmenu.addItem(item)
+        }
+        let tempUnitItem = NSMenuItem(title: "Temperature Unit", action: nil, keyEquivalent: "")
+        tempUnitItem.submenu = tempUnitSubmenu
+        cachedTempUnitSubmenu = tempUnitSubmenu
+
+        let netUnitSubmenu = NSMenu()
+        let netUnits: [(String, NetworkUnitMode)] = [
+            ("Auto (B, K, M, G)", .auto),
+            ("Binary (B, KiB, MiB, GiB)", .binary),
+            ("Decimal (B, KB, MB, GB)", .decimal),
+            ("Bits (bps, Kbps, Mbps)", .bits)
+        ]
+        for (label, mode) in netUnits {
+            let item = NSMenuItem(title: label, action: #selector(changeNetworkUnit(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            netUnitSubmenu.addItem(item)
+        }
+        let netUnitItem = NSMenuItem(title: "Network Unit", action: nil, keyEquivalent: "")
+        netUnitItem.submenu = netUnitSubmenu
+        cachedNetworkUnitSubmenu = netUnitSubmenu
+
+        // Store the parent items in the settings order they appear in the menu.
+        cachedSettingsParentItems = [showNetItem, showTempItem, autoStartItem, refreshItem, tempUnitItem, netUnitItem]
+    }
+
+    private func buildFooterItems() {
+        let githubItem = NSMenuItem(title: "GitHub Repository", action: #selector(openGitHubPage), keyEquivalent: "")
+        githubItem.target = self
+        cachedGitHubItem = githubItem
+
+        let quitItem = NSMenuItem(title: "Quit MeMo", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        cachedQuitItem = quitItem
+    }
+
+    private func buildStaticMenuItems() {
+        guard cachedVersionItem == nil else { return }
+        buildAboutItem()
+        buildActivityItem()
+        buildSettingsItems()
+        buildFooterItems()
+    }
+
+    private func updateStaticMenuStates() {
+        cachedShowNetworkItem?.state = showNetworkSpeeds ? .on : .off
+        cachedShowTemperatureItem?.state = showCPUTemperature ? .on : .off
+        cachedLaunchAtLoginItem?.state = isLaunchAtLoginEnabled ? .on : .off
+
+        if let submenu = cachedIntervalSubmenu {
+            for item in submenu.items {
+                if let sec = item.representedObject as? TimeInterval {
+                    item.state = (updateInterval == sec) ? .on : .off
+                }
+            }
+        }
+        if let submenu = cachedTempUnitSubmenu {
+            for item in submenu.items {
+                if let key = item.representedObject as? String {
+                    item.state = (tempUnit == key) ? .on : .off
+                }
+            }
+        }
+        if let submenu = cachedNetworkUnitSubmenu {
+            for item in submenu.items {
+                if let raw = item.representedObject as? Int, let mode = NetworkUnitMode(rawValue: raw) {
+                    item.state = (networkUnitMode == mode) ? .on : .off
+                }
+            }
+        }
+    }
+
+    /// Detaches a cached item from its previous menu (if any) and adds it to the
+    /// new menu. NSMenuItem can only belong to one menu at a time.
+    private func reuse(_ item: NSMenuItem?, in menu: NSMenu) {
+        guard let item = item else { return }
+        item.menu?.removeItem(item)
+        menu.addItem(item)
+    }
+
     private func showMenu() {
+        buildStaticMenuItems()
+        updateStaticMenuStates()
+
         let menu = NSMenu()
         menu.autoenablesItems = false
 
         // --- About Header ---
-        let versionStr = BUILD_VERSION
-        let versionItem = NSMenuItem(title: "MeMo v\(versionStr)", action: nil, keyEquivalent: "")
-        versionItem.isEnabled = false
-        versionItem.attributedTitle = NSAttributedString(string: "MeMo v\(versionStr)", attributes: [
-            .foregroundColor: NSColor.tertiaryLabelColor,
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        ])
-        menu.addItem(versionItem)
+        reuse(cachedVersionItem, in: menu)
         menu.addItem(NSMenuItem.separator())
 
         var customViews: [(item: NSMenuItem, builder: (CGFloat) -> (NSView, () -> Void))] = []
@@ -242,93 +385,21 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // Jump to Activity Monitor for the full, detailed breakdown.
-        let activityItem = NSMenuItem(title: "Open Activity Monitor", action: #selector(openActivityMonitor), keyEquivalent: "")
-        activityItem.target = self
-        menu.addItem(activityItem)
+        reuse(cachedActivityItem, in: menu)
         menu.addItem(NSMenuItem.separator())
 
         // --- Settings Section ---
-        let showNetItem = NSMenuItem(title: "Show Network Speeds", action: #selector(toggleShowNetwork(_:)), keyEquivalent: "")
-        showNetItem.target = self
-        showNetItem.state = showNetworkSpeeds ? .on : .off
-        menu.addItem(showNetItem)
-        
-        let showTempItem = NSMenuItem(title: "Show CPU Temperature", action: #selector(toggleShowTemperature(_:)), keyEquivalent: "")
-        showTempItem.target = self
-        showTempItem.state = showCPUTemperature ? .on : .off
-        menu.addItem(showTempItem)
-        
-        let autoStartItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
-        autoStartItem.target = self
-        autoStartItem.state = isLaunchAtLoginEnabled ? .on : .off
-        menu.addItem(autoStartItem)
-        
-        let intervalSubmenu = NSMenu()
-        let intervals: [(String, TimeInterval)] = [
-            ("Ultra Fast (250 ms)", 0.25),
-            ("Fast (500 ms)", 0.5),
-            ("Normal (1 s)", 1.0),
-            ("Slow (2 s)", 2.0),
-            ("Very Slow (5 s)", 5.0)
-        ]
-        for (label, sec) in intervals {
-            let item = NSMenuItem(title: label, action: #selector(changeInterval(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = sec
-            item.state = (updateInterval == sec) ? .on : .off
-            intervalSubmenu.addItem(item)
+        for item in cachedSettingsParentItems {
+            reuse(item, in: menu)
         }
-        
-        let refreshItem = NSMenuItem(title: "Update Interval", action: nil, keyEquivalent: "")
-        refreshItem.submenu = intervalSubmenu
-        menu.addItem(refreshItem)
-        
-        let tempUnitSubmenu = NSMenu()
-        let tempUnits = [("Celsius (°C)", "C"), ("Fahrenheit (°F)", "F")]
-        for (label, key) in tempUnits {
-            let item = NSMenuItem(title: label, action: #selector(changeTempUnit(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = key
-            item.state = (tempUnit == key) ? .on : .off
-            tempUnitSubmenu.addItem(item)
-        }
-        
-        let tempUnitItem = NSMenuItem(title: "Temperature Unit", action: nil, keyEquivalent: "")
-        tempUnitItem.submenu = tempUnitSubmenu
-        menu.addItem(tempUnitItem)
-        
-        let netUnitSubmenu = NSMenu()
-        let netUnits: [(String, NetworkUnitMode)] = [
-            ("Auto (B, K, M, G)", .auto),
-            ("Binary (B, KiB, MiB, GiB)", .binary),
-            ("Decimal (B, KB, MB, GB)", .decimal),
-            ("Bits (bps, Kbps, Mbps)", .bits)
-        ]
-        for (label, mode) in netUnits {
-            let item = NSMenuItem(title: label, action: #selector(changeNetworkUnit(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = mode.rawValue
-            item.state = (networkUnitMode == mode) ? .on : .off
-            netUnitSubmenu.addItem(item)
-        }
-        
-        let netUnitItem = NSMenuItem(title: "Network Unit", action: nil, keyEquivalent: "")
-        netUnitItem.submenu = netUnitSubmenu
-        menu.addItem(netUnitItem)
-        
         menu.addItem(NSMenuItem.separator())
 
         // GitHub Link
-        let githubItem = NSMenuItem(title: "GitHub Repository", action: #selector(openGitHubPage), keyEquivalent: "")
-        githubItem.target = self
-        menu.addItem(githubItem)
-        
+        reuse(cachedGitHubItem, in: menu)
         menu.addItem(NSMenuItem.separator())
-        
+
         // Quit
-        let quitItem = NSMenuItem(title: "Quit MeMo", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
+        reuse(cachedQuitItem, in: menu)
         
         // Now that every item is present, the menu's width is final. Replace each
         // provisional item with a custom view that fills that width.
