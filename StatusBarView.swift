@@ -97,12 +97,11 @@ public func colorForNetworkSpeed(_ bytesPerSec: Double, isDark: Bool, defaultCol
 ///   - bytesPerSec: Raw bytes/second from StatsEngine.
 ///   - shortUnit: When true, returns short units ("B","K","M","G") for the
 ///     compact menu bar. When false, returns full units ("B/s","K/s","M/s"…).
-public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode? = nil) -> (val: String, unit: String) {
-    let resolvedMode = mode ?? NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto
+public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode) -> (val: String, unit: String) {
     let val: Double
     let tiers: [(threshold: Double, divisor: Double, short: String, full: String)]
     
-    switch resolvedMode {
+    switch mode {
     case .auto:
         val = bytesPerSec
         tiers = [
