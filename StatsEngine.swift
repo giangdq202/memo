@@ -59,6 +59,8 @@ public class StatsEngine {
     private let hostPort: mach_port_t = mach_host_self()
     private let totalPhysicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory
     private let cachedPageSize: UInt64
+    private let debugLogPath = "/tmp/memo_debug.log"
+    private var debugLogHandle: FileHandle?
     
     // CPU delta tracking
     private var prevCpuInfo: processor_info_array_t?
@@ -93,15 +95,19 @@ public class StatsEngine {
     }
     
     /// Appends a debug message to `/tmp/memo_debug.log` when `--debug` is active.
+    /// The handle is kept open for the lifetime of the engine to avoid an
+    /// open/close pair for every log line.
     private func writeDebugLog(_ message: String) {
         guard let data = message.data(using: .utf8) else { return }
-        if let handle = FileHandle(forWritingAtPath: "/tmp/memo_debug.log") {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            handle.closeFile()
-        } else {
-            try? message.write(toFile: "/tmp/memo_debug.log", atomically: true, encoding: .utf8)
+        if debugLogHandle == nil {
+            if !FileManager.default.fileExists(atPath: debugLogPath) {
+                _ = FileManager.default.createFile(atPath: debugLogPath, contents: nil)
+            }
+            debugLogHandle = FileHandle(forWritingAtPath: debugLogPath)
         }
+        guard let handle = debugLogHandle else { return }
+        handle.seekToEndOfFile()
+        handle.write(data)
     }
     
     // Active temperature keys grouped by cluster (e.g. CPU, GPU)
@@ -160,6 +166,7 @@ public class StatsEngine {
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevSize))
         }
         mach_port_deallocate(mach_task_self_, hostPort)
+        debugLogHandle?.closeFile()
     }
 
     // MARK: - CPU Sampling
