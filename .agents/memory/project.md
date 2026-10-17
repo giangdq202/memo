@@ -2,6 +2,12 @@
 
 ## Architectural Decisions
 
+### 2026-10-17: Configurable Threshold Alerts
+- **User-Configurable Thresholds**: `cpuAlertThreshold`, `ramAlertThreshold`, and `tempAlertThreshold` are stored in `UserDefaults`; `0` disables that alert. Preset levels are exposed through submenus, so nothing is hardcoded in the alert logic.
+- **Permission on Demand**: `UNUserNotificationCenter` authorization is requested only when the user selects a non-zero threshold, keeping first-run silent.
+- **Cooldown**: Each metric has a 60-second cooldown (`lastCpuAlert`, `lastRamAlert`, `lastTempAlert`) to prevent notification spam while a value stays high.
+- **Menu Integration**: Alert submenus are cached with the other settings items, so they appear in both the full menu and the right-click quick settings menu.
+
 ### 2026-10-17: Ops Hardening & Smoke Tests
 - **Release Versioning**: Replaced the fragile `sed` replacement in `release.yml` with `plutil -replace CFBundleShortVersionString` plus a `plutil -lint` check.
 - **Smoke Tests**: Added `scripts/smoke-test.sh`, which compiles a temporary harness from `SMC.swift`, `StatsEngine.swift`, and `StatusBarView.swift`, then verifies CPU/memory sampling, top-process sampling, and the shared formatters.
