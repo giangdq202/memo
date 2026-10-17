@@ -97,12 +97,11 @@ public func colorForNetworkSpeed(_ bytesPerSec: Double, isDark: Bool, defaultCol
 ///   - bytesPerSec: Raw bytes/second from StatsEngine.
 ///   - shortUnit: When true, returns short units ("B","K","M","G") for the
 ///     compact menu bar. When false, returns full units ("B/s","K/s","M/s"…).
-public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode? = nil) -> (val: String, unit: String) {
-    let resolvedMode = mode ?? NetworkUnitMode(rawValue: UserDefaults.standard.integer(forKey: "networkUnitMode")) ?? .auto
+public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, mode: NetworkUnitMode) -> (val: String, unit: String) {
     let val: Double
     let tiers: [(threshold: Double, divisor: Double, short: String, full: String)]
     
-    switch resolvedMode {
+    switch mode {
     case .auto:
         val = bytesPerSec
         tiers = [
@@ -151,6 +150,24 @@ public func formatNetworkSpeed(_ bytesPerSec: Double, shortUnit: Bool = false, m
     }
     let lastUnit = tiers.last.map { shortUnit ? $0.short : $0.full } ?? "B"
     return (String(format: "%.0f", val), lastUnit)
+}
+
+/// Converts a Celsius reading to the requested unit.
+private func convertedTemperature(_ celsius: Double, unit: String) -> Double {
+    return unit == "F" ? celsius * 1.8 + 32.0 : celsius
+}
+
+/// Returns the full temperature display string (value plus unit) for menu rows.
+public func formatTemperature(_ celsius: Double, unit: String) -> String {
+    guard celsius > 0 else { return "--" }
+    return String(format: "%.0f°%@", convertedTemperature(celsius, unit: unit), unit)
+}
+
+/// Returns only the numeric temperature string for the menu bar, which draws
+/// the unit separately.
+public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
+    guard celsius > 0 else { return "--" }
+    return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
 }
 
 // MARK: - Static constants (allocated once for app lifetime)
@@ -356,20 +373,10 @@ public class UnifiedStatsView: BaseStatsView {
 
         if showTemperature {
             // Temperature
-            let tempVal: String
-            if _cpuTemperature > 0 {
-                if _tempUnit == "F" {
-                    tempVal = String(format: "%.0f", _cpuTemperature * 1.8 + 32.0)
-                } else {
-                    tempVal = String(format: "%.0f", _cpuTemperature)
-                }
-            } else {
-                tempVal = "--"
-            }
-            
             if cachedTempLine == nil || _cpuTemperature != lastTempC || _tempUnit != lastTempUnit {
                 lastTempC = _cpuTemperature
                 lastTempUnit = _tempUnit
+                let tempVal = formatTemperatureValue(_cpuTemperature, unit: _tempUnit)
                 let tempColor = _cpuTemperature > 0 ? colorForTemperature(_cpuTemperature, isDark: isDark) : textColor
                 
                 // Value line (Top, bigger font)

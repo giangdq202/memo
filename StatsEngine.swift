@@ -75,6 +75,9 @@ public class StatsEngine {
     private var cachedPrimaryInterface: String = "en0"
     private var lastPrimaryInterfaceCheck: CFAbsoluteTime = 0
     private let primaryInterfaceCacheTTL: CFAbsoluteTime = 5.0
+    private var cachedTopProcesses: (limit: Int, byCPU: [ProcessUsage], byMemory: [ProcessUsage])?
+    private var cachedTopProcessesTime: CFAbsoluteTime = 0
+    private let topProcessCacheTTL: CFAbsoluteTime = 2.0
     
     /// Queries SystemConfiguration for the current primary IPv4 network interface.
     /// The result is cached for a few seconds so the periodic tick does not hit
@@ -102,7 +105,7 @@ public class StatsEngine {
         if debugLogHandle != nil && !FileManager.default.fileExists(atPath: debugLogPath) {
             // Writing to an unlinked file succeeds silently, so detect external
             // deletion before reusing the handle.
-            debugLogHandle?.closeFile()
+            try? debugLogHandle?.close()
             debugLogHandle = nil
         }
         if debugLogHandle == nil {
@@ -119,7 +122,7 @@ public class StatsEngine {
         } catch {
             // The file may have been removed or rotated externally. Drop the
             // stale handle so the next call recreates it.
-            handle.closeFile()
+            try? handle.close()
             debugLogHandle = nil
         }
     }
@@ -198,7 +201,7 @@ public class StatsEngine {
             vm_deallocate(mach_task_self_, vm_address_t(bitPattern: prevCpuInfo), vm_size_t(prevSize))
         }
         mach_port_deallocate(mach_task_self_, hostPort)
-        debugLogHandle?.closeFile()
+        try? debugLogHandle?.close()
     }
 
     // MARK: - CPU Sampling
@@ -472,6 +475,13 @@ public class StatsEngine {
     /// no second sample is needed. This is only called on menu open, so the
     /// one-off subprocess cost never touches the periodic update path.
     public func fetchTopProcesses(limit: Int) -> (byCPU: [ProcessUsage], byMemory: [ProcessUsage]) {
+        let now = CFAbsoluteTimeGetCurrent()
+        if let cached = cachedTopProcesses,
+           cached.limit == limit,
+           now - cachedTopProcessesTime < topProcessCacheTTL {
+            return (cached.byCPU, cached.byMemory)
+        }
+
         let currentUID = getuid()
 
         let task = Process()
@@ -487,7 +497,7 @@ public class StatsEngine {
         guard (try? task.run()) != nil else { return ([], []) }
         // Reading to EOF returns when stdout closes. We don't need the exit
         // status and stderr is discarded, so an explicit waitUntilExit is unnecessary.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
         guard let output = String(data: data, encoding: .utf8) else { return ([], []) }
 
         // Exclude our own app from the ranking.
@@ -510,9 +520,11 @@ public class StatsEngine {
         }
 
         let all = Array(byName.values)
-        let byCPU = all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(limit)
-        let byMemory = all.sorted { $0.memoryBytes > $1.memoryBytes }.prefix(limit)
-        return (Array(byCPU), Array(byMemory))
+        let byCPU = Array(all.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(limit))
+        let byMemory = Array(all.sorted { $0.memoryBytes > $1.memoryBytes }.prefix(limit))
+        cachedTopProcesses = (limit, byCPU, byMemory)
+        cachedTopProcessesTime = CFAbsoluteTimeGetCurrent()
+        return (byCPU, byMemory)
     }
 
     /// Parses one `ps` line: three leading numeric columns (pcpu, rss, uid)

@@ -296,14 +296,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         customViews.append((tempItem, { [weak self] width in 
             guard let self = self else { return (NSView(), {}) }
             let t = self.currentCpuStats.temperature
-            let displayTemp = (t > 0 && self.tempUnit == "F") ? t * 1.8 + 32.0 : t
-            let valStr = t > 0 ? String(format: "%.0f°%@", displayTemp, self.tempUnit) : "--"
+            let valStr = formatTemperature(t, unit: self.tempUnit)
             let (view, updateBlock) = Self.inlineRow(label: "Temp", valueText: valStr, isTemp: true, tempVal: t, width: width)
             let updater = { [weak self, weak view] in
                 guard let self = self, let view = view else { return }
                 let tNew = self.currentCpuStats.temperature
-                let displayTNew = (tNew > 0 && self.tempUnit == "F") ? tNew * 1.8 + 32.0 : tNew
-                let newStr = tNew > 0 ? String(format: "%.0f°%@", displayTNew, self.tempUnit) : "--"
+                let newStr = formatTemperature(tNew, unit: self.tempUnit)
                 let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 let color = (tNew > 0) ? colorForTemperature(tNew, isDark: isDark) : .secondaryLabelColor
                 updateBlock(newStr, color)
@@ -338,16 +336,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 customViews.append((item, { [weak self] width in
                     guard let self = self else { return (NSView(), {}) }
                     let t = cluster.temperature
-                    let displayTemp = (t > 0 && self.tempUnit == "F") ? t * 1.8 + 32.0 : t
-                    let valStr = t > 0 ? String(format: "%.0f°%@", displayTemp, self.tempUnit) : "--"
+                    let valStr = formatTemperature(t, unit: self.tempUnit)
                     
                     let (view, updateBlock) = Self.tempClusterRow(name: cluster.name, valueText: valStr, tempVal: t, width: width)
                     let updater = { [weak self, weak view] in
                         guard let self = self, let view = view else { return }
                         // Find this cluster's updated temperature
                         let newT = self.currentCpuStats.tempClusters.first(where: { $0.name == cluster.name })?.temperature ?? 0.0
-                        let displayTNew = (newT > 0 && self.tempUnit == "F") ? newT * 1.8 + 32.0 : newT
-                        let newStr = newT > 0 ? String(format: "%.0f°%@", displayTNew, self.tempUnit) : "--"
+                        let newStr = formatTemperature(newT, unit: self.tempUnit)
                         let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                         let color = (newT > 0) ? colorForTemperature(newT, isDark: isDark) : .secondaryLabelColor
                         updateBlock(newStr, color)
@@ -470,7 +466,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         UserDefaults.standard.removeObject(forKey: "LaunchAtLogin")
-        UserDefaults.standard.synchronize()
     }
     
     private func setLaunchAtLogin(enabled: Bool) {
