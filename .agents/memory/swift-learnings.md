@@ -233,3 +233,22 @@
 
 **CI as a Gate**
 - Run the app-bundle signature check first, then the smoke test. Both are fast and catch different failure classes: packaging vs. runtime behavior.
+
+---
+
+## Session 12 - 2026-10-17: Configurable Threshold Alerts
+
+### Concepts Learned
+
+**UserNotifications on macOS**
+- `UNUserNotificationCenter.current()` delivers local notifications; on macOS set the delegate and implement `willPresent` returning `[.banner, .sound]` so alerts show while the app is active.
+- Request authorization only when the user opts in, rather than at first launch.
+
+**Threshold Modeling with a Single Value**
+- Using `0` as "off" lets one `Double` per metric represent both the enabled state and the threshold. The menu shows presets, and the comparison is simply `value >= threshold && threshold > 0`.
+
+**Cooldown Instead of Edge Detection**
+- Tracking the last alert timestamp per metric and enforcing a 60-second window is simpler than tracking crossing edges, and still prevents spam while a value stays above the threshold. If needed later, a hysteresis band can be added on top.
+
+**Reusing Cached Submenus**
+- Building alert submenus once and storing them alongside the other cached settings items means the quick settings menu gets them for free.
