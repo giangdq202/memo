@@ -2,6 +2,15 @@
 
 ## Architectural Decisions
 
+### 2026-10-17: Correctness Hardening & Per-Tick Efficiency
+- **Interface Enumeration Safety**: Guarded `ifa_addr` before dereferencing it in `getifaddrs` traversal, eliminating a possible crash when an interface disappears between enumeration and inspection.
+- **Mach Resource Hygiene**: Deallocated the `mach_host_self()` send right in `StatsEngine.deinit` and freed `host_processor_info` buffers on partial failure.
+- **Interface Cache**: Cached the primary IPv4 interface for five seconds, reducing `SCDynamicStoreCopyValue` calls from every tick to at most one every five seconds.
+- **Temperature Sampling Rotation**: Sample one SMC temperature cluster per tick and reuse cached sensor values for the others, bounding IOKit calls while keeping all clusters visible.
+- **UI Settings Cache**: Cached `networkUnitMode` inside `UnifiedStatsView` and passed it to menu rows, removing repeated `UserDefaults` reads from draw and menu update paths.
+- **Debug Log Handle**: Reused a single `/tmp/memo_debug.log` file handle and recreates it when the file is removed externally, avoiding open/close pairs for every log line.
+- **Auto Unit Thresholds**: Aligned Auto network-unit thresholds to a consistent 1024 base, avoiding the transient "1000 K" display.
+
 ### 2026-10-14: Core Optimizations & Logic Fixes
 - **Thermal Average & Ordering**: Fixed thermal cluster order to `P-Cores → E-Cores → GPU → Other CPU` and calculated menu bar CPU average strictly from genuine CPU core sensors (`P-Cores` + `E-Cores`), falling back to `Other CPU` if core sensors are unavailable.
 - **Zero-Allocation Network Traversal**: Cached `SCDynamicStore` reference across life of process; adopted `strcmp` in `getifaddrs` traversal to avoid allocating heap strings for non-primary interfaces.

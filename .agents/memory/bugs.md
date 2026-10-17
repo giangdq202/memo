@@ -111,3 +111,13 @@ COMMON_FLAGS=(-Osize -wmo -module-name MeMo -sdk "$SDK_PATH" ...)
 **Fix**: Explicitly calculate menu bar average solely from `P-Cores` and `E-Cores`, only falling back to `Other CPU` if no core sensors are available.
 **File**: `StatsEngine.swift` lines 186-224
 **Lesson**: Keep primary indicators focused strictly on relevant component metrics rather than broad system-wide sensor averages.
+
+---
+
+## 2026-10-17: NULL ifa_addr and CPU Buffer Leak
+
+**Symptom**: Potential crash during network sampling when an interface disappears, plus a leaked processor-info buffer when `host_processor_info` returns an error after allocating it.
+**Root cause**: `ifa_addr` was dereferenced before the optional check, and the error path returned without calling `vm_deallocate`.
+**Fix**: Bind `ifa_addr` with `let` before reading `sa_family`; free any non-nil `cpuInfo` buffer before returning on `KERN_SUCCESS` failure.
+**File**: `StatsEngine.swift` network and CPU sampling paths
+**Lesson**: Check every C pointer before dereferencing it, and free resources on every early-return path.
