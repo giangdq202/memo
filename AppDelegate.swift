@@ -175,7 +175,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(netItem)
         customViews.append((netItem, { [weak self] width in 
             guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = Self.networkRow(interface: self.currentNetStats.activeInterface, upBps: self.currentNetStats.uploadBytesPerSec, downBps: self.currentNetStats.downloadBytesPerSec, width: width)
+            let (view, updateBlock) = Self.networkRow(interface: self.currentNetStats.activeInterface, upBps: self.currentNetStats.uploadBytesPerSec, downBps: self.currentNetStats.downloadBytesPerSec, width: width, mode: self.networkUnitMode)
             let updater = { [weak self] in
                 guard let self = self else { return }
                 updateBlock(self.currentNetStats.activeInterface, self.currentNetStats.uploadBytesPerSec, self.currentNetStats.downloadBytesPerSec)
@@ -725,7 +725,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return (container, updater)
     }
 
-    private static func networkRow(interface: String, upBps: Double, downBps: Double, width: CGFloat) -> (NSView, (String, Double, Double) -> Void) {
+    private static func networkRow(interface: String, upBps: Double, downBps: Double, width: CGFloat, mode: NetworkUnitMode) -> (NSView, (String, Double, Double) -> Void) {
         let leftInset: CGFloat = 21
         let rightInset: CGFloat = 21
         let font = NSFont.menuFont(ofSize: 0)
@@ -737,9 +737,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         nameLabel.frame = NSRect(x: leftInset, y: 2, width: 35, height: 16)
         container.addSubview(nameLabel)
 
-        let upParts = formatNetworkSpeed(upBps)
+        let upParts = formatNetworkSpeed(upBps, mode: mode)
         let upStr = "↑ \(upParts.val) \(upParts.unit)"
-        let downParts = formatNetworkSpeed(downBps)
+        let downParts = formatNetworkSpeed(downBps, mode: mode)
         let downStr = "↓ \(downParts.val) \(downParts.unit)"
         let speedsStr = "\(upStr)   \(downStr)"
 
@@ -754,9 +754,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let updater: (String, Double, Double) -> Void = { newIf, newUp, newDown in
             nameLabel.stringValue = newIf
-            let newUpParts = formatNetworkSpeed(newUp)
+            let newUpParts = formatNetworkSpeed(newUp, mode: mode)
             let newUpStr = "↑ \(newUpParts.val) \(newUpParts.unit)"
-            let newDownParts = formatNetworkSpeed(newDown)
+            let newDownParts = formatNetworkSpeed(newDown, mode: mode)
             let newDownStr = "↓ \(newDownParts.val) \(newDownParts.unit)"
             valueLabel.stringValue = "\(newUpStr)   \(newDownStr)"
         }
