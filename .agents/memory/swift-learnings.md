@@ -282,3 +282,14 @@
 - `NSView.toolTip` takes a precomputed String. Updating it on every timer tick wastes allocations and string formatting work when the user rarely hovers.
 - Implementing `NSViewToolTipOwner` allows AppKit to request the string lazily via `view(_:stringForToolTip:point:userData:)` only when the pointer actually hovers over the registered rectangle.
 - Overriding `setFrameSize(_:)` ensures `updateToolTipRect()` keeps the tooltip bounds synchronized whenever the status item width changes.
+
+---
+
+## Session 15 - 2026-10-18: Skip Idle SMC Temperature Polling
+
+### Concepts Learned
+
+**Decoupling Polling Loops from Metric Dependencies**
+- Hardware sensor polling (IOKit/SMC) is expensive compared to Mach kernel statistics. Making polling conditional on actual consumer demand (`needsTemp`) prevents battery drain when the metric is not visible.
+- Decoupling on-demand sampling from periodic differential sampling prevents state corruption: `fetchCPUStats` computes deltas over time, so calling it out-of-band to inspect temperature would corrupt `prevCpuInfo` and cause false 0% CPU spikes. Extracting `sampleTemperatures(fullSample:)` avoids this coupling.
+- When re-enabling a display metric, trigger an immediate full sample and render pass so the UI never displays empty or stale placeholders (`--`).

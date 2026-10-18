@@ -2,6 +2,11 @@
 
 ## Architectural Decisions
 
+### 2026-10-18: Skip Idle SMC Temperature Polling
+- **Idle SMC Skip**: When `showCPUTemperature` is off and no temp alerts or temp sparkline are active, `StatsEngine.fetchCPUStats(includeTemperature: false)` skips all IOKit reads and 30s `#KEY` rescans, reducing context switches by ~78% and Mach syscalls by ~41%.
+- **Separated Sampling**: `sampleTemperatures(fullSample:)` is decoupled from CPU delta sampling. Opening the dropdown menu on-demand samples temperatures immediately without touching `prevCpuInfo`, eliminating CPU measurement jitter.
+- **Zero-Flicker Toggle**: Re-enabling temperature via Quick Settings samples sensors on-demand in `updateUIForSettingsChange()` and renders immediately, avoiding the transient `--` display.
+
 ### 2026-10-18: Lazy Menu Bar Tooltip
 - **On-Demand Generation**: Conformed `UnifiedStatsView` to `NSViewToolTipOwner` and registered `bounds` via `addToolTip(_:owner:userData:)`.
 - **Zero-Allocation Hot Path**: String formatting only happens when the cursor hovers over the menu bar item, avoiding unnecessary per-tick allocations.

@@ -103,7 +103,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     }
     
     private func updateStats() {
-        currentCpuStats = statsEngine.fetchCPUStats()
+        let needsTemp = showCPUTemperature
+            || tempAlertThreshold > 0
+            || sparklineMetric == .temp
+            || !activeMenuUpdaters.isEmpty
+
+        currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
         currentMemStats = statsEngine.fetchMemoryStats()
         
         appendHistory()
@@ -319,6 +324,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         guard let statusItem = statusItem else { return }
         buildStaticMenuItems()
         updateStaticMenuStates()
+
+        if currentCpuStats.tempClusters.isEmpty {
+            let temp = statsEngine.sampleTemperatures(fullSample: true)
+            currentCpuStats.temperature = temp.temperature
+            currentCpuStats.tempClusters = temp.clusters
+        }
 
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -668,8 +679,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     }
     
     private func updateUIForSettingsChange() {
+        if showCPUTemperature && currentCpuStats.temperature <= 0 {
+            let temp = statsEngine.sampleTemperatures(fullSample: true)
+            currentCpuStats.temperature = temp.temperature
+            currentCpuStats.tempClusters = temp.clusters
+        }
         statsView?.showTemperature = showCPUTemperature
         updateStatusItemWidth()
+        renderCurrentStats()
         statsView?.needsDisplay = true
     }
 
