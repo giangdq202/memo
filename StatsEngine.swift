@@ -170,7 +170,7 @@ public class StatsEngine {
     }
 
     // MARK: - CPU Sampling
-    public func fetchCPUStats() -> CPUStats {
+    public func fetchCPUStats(includeTemperature: Bool = true) -> CPUStats {
         var stats = CPUStats()
         var numCPUs: natural_t = 0
         var cpuInfo: processor_info_array_t?
@@ -229,65 +229,18 @@ public class StatsEngine {
         self.prevCpuInfo = cpuInfo
         self.prevCpuInfoCount = cpuInfoCount
         
+        guard includeTemperature else {
+            cachedTempValues.removeAll()
+            return stats
+        }
+
         if CFAbsoluteTimeGetCurrent() - lastTempKeyScan >= tempKeyScanInterval {
             rescanActiveTempKeys()
         }
-        
-        // Calculate CPU average temperature and cluster temperatures.
-        // Only one cluster is sampled per tick; cached values keep the other
-        // clusters usable without issuing IOKit calls for every sensor.
-        if !activeTempKeys.isEmpty {
-            let clusterOrder = ["P-Cores", "E-Cores", "GPU", "Other CPU"]
-            let groupsToSample = clusterOrder.filter { activeTempKeys[$0] != nil }
-            let smc = SMC.shared
 
-            if !groupsToSample.isEmpty {
-                let groupName = groupsToSample[tempSampleTick % groupsToSample.count]
-                tempSampleTick &+= 1
-
-                if let keys = activeTempKeys[groupName] {
-                    for key in keys {
-                        if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
-                            cachedTempValues[key] = val
-                        } else {
-                            cachedTempValues.removeValue(forKey: key)
-                        }
-                    }
-                }
-            }
-
-            var coreSum: Double = 0.0
-            var coreCount = 0
-            var fallbackSum: Double = 0.0
-            var fallbackCount = 0
-
-            for groupName in clusterOrder {
-                guard let keys = activeTempKeys[groupName] else { continue }
-                var groupSum: Double = 0.0
-                var groupCount = 0
-                for key in keys {
-                    guard let val = cachedTempValues[key] else { continue }
-                    groupSum += val
-                    groupCount += 1
-                    if groupName == "P-Cores" || groupName == "E-Cores" {
-                        coreSum += val
-                        coreCount += 1
-                    } else if groupName == "Other CPU" {
-                        fallbackSum += val
-                        fallbackCount += 1
-                    }
-                }
-                if groupCount > 0 {
-                    stats.tempClusters.append(TempCluster(name: groupName, temperature: groupSum / Double(groupCount)))
-                }
-            }
-
-            if coreCount > 0 {
-                stats.temperature = coreSum / Double(coreCount)
-            } else if fallbackCount > 0 {
-                stats.temperature = fallbackSum / Double(fallbackCount)
-            }
-        }
+        let tempResult = sampleTemperatures(fullSample: false)
+        stats.temperature = tempResult.temperature
+        stats.tempClusters = tempResult.clusters
         
         if isDebugMode {
             let log = "[DEBUG CPU] Usage: \(String(format: "%.1f", stats.usagePercent))% | Cores: \(stats.coreCount) | Temp: \(String(format: "%.1f", stats.temperature))°C | Clusters: \(stats.tempClusters.count)\n"
@@ -295,6 +248,77 @@ public class StatsEngine {
         }
         
         return stats
+    }
+
+    /// Samples active SMC temperature sensors and computes cluster and core averages.
+    /// - Parameter fullSample: If true (or when the cache is empty), reads all active clusters
+    ///   in one pass instead of rotating a single cluster per tick.
+    /// - Returns: A tuple containing the primary CPU temperature and per-cluster averages.
+    public func sampleTemperatures(fullSample: Bool = false) -> (temperature: Double, clusters: [TempCluster]) {
+        guard !activeTempKeys.isEmpty else { return (0.0, []) }
+
+        let clusterOrder = ["P-Cores", "E-Cores", "GPU", "Other CPU"]
+        let groupsToSample = clusterOrder.filter { activeTempKeys[$0] != nil }
+        let smc = SMC.shared
+
+        if !groupsToSample.isEmpty {
+            let targetGroups: [String]
+            if fullSample || cachedTempValues.isEmpty {
+                targetGroups = groupsToSample
+            } else {
+                targetGroups = [groupsToSample[tempSampleTick % groupsToSample.count]]
+                tempSampleTick &+= 1
+            }
+
+            for groupName in targetGroups {
+                guard let keys = activeTempKeys[groupName] else { continue }
+                for key in keys {
+                    if let val = smc.getValue(key), val > 15.0 && val < 110.0 {
+                        cachedTempValues[key] = val
+                    } else {
+                        cachedTempValues.removeValue(forKey: key)
+                    }
+                }
+            }
+        }
+
+        var coreSum: Double = 0.0
+        var coreCount = 0
+        var fallbackSum: Double = 0.0
+        var fallbackCount = 0
+        var clusters: [TempCluster] = []
+
+        for groupName in clusterOrder {
+            guard let keys = activeTempKeys[groupName] else { continue }
+            var groupSum: Double = 0.0
+            var groupCount = 0
+            for key in keys {
+                guard let val = cachedTempValues[key] else { continue }
+                groupSum += val
+                groupCount += 1
+                if groupName == "P-Cores" || groupName == "E-Cores" {
+                    coreSum += val
+                    coreCount += 1
+                } else if groupName == "Other CPU" {
+                    fallbackSum += val
+                    fallbackCount += 1
+                }
+            }
+            if groupCount > 0 {
+                clusters.append(TempCluster(name: groupName, temperature: groupSum / Double(groupCount)))
+            }
+        }
+
+        let avgTemp: Double
+        if coreCount > 0 {
+            avgTemp = coreSum / Double(coreCount)
+        } else if fallbackCount > 0 {
+            avgTemp = fallbackSum / Double(fallbackCount)
+        } else {
+            avgTemp = 0.0
+        }
+
+        return (avgTemp, clusters)
     }
 
     // MARK: - Memory Sampling
