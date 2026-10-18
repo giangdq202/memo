@@ -57,7 +57,7 @@
 **SMC / IOKit**
 - `IOConnectCallStructMethod` is a syscall into the kernel - heavy, needs to be minimized.
 - `keyInfo` (dataSize, dataType) does not change for the same key -> can be cached.
-- SMC returns bytes in big-endian, host is little-endian -> must be swapped (or manual parse).
+- SMC data format: `flt ` is host-endian, `sp78` is manual big-endian.
 
 **UserDefaults Computed Property**
 - Use computed property `get/set` instead of stored property -> auto-persist.

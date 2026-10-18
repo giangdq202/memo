@@ -120,7 +120,7 @@
 - [x] AGENTS.md + .agent folder structure
 - [x] VS Code configurations (tasks, launch, settings)
 - [x] Critical bugs fix: timer double-fire, CPU overflow, SMC guard, interval persist
-- [x] Optimizations: SMC keyInfo cache, draw() cache, Float endian fix, codesign cleanup
+- [x] Optimizations: SMC keyInfo cache, draw() cache, codesign cleanup
 - [x] Custom color thresholds (warn/critical levels)
 - [x] Discrete 4-level colors (Green/Yellow/Orange/Red)
 - [x] Enhanced Dropdown Menu (system summary, progress bars)
@@ -142,8 +142,8 @@
 ### In Progress
 - [x] Apple Silicon only app (arm64 build)
 - [x] Temperature grouped by clusters (P-Cores, E-Cores, GPU) in Dropdown
-- [ ] (Future) Notification alerts
-- [ ] (Future) History sparkline chart
+- [x] Notification alerts
+- [x] History sparkline chart
 
 ---
 

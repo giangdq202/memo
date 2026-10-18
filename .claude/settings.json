@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/SMC.swift)",
+      "Bash(git push origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ],
+    "ask": [
+      "Edit(/Info.plist)",
+      "Edit(/build.sh)",
+      "Bash(./install.sh:*)",
+      "Bash(./uninstall.sh:*)",
+      "Bash(bash install.sh:*)",
+      "Bash(bash uninstall.sh:*)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}

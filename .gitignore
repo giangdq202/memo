@@ -5,3 +5,4 @@ AppIcon.iconset
 .DS_Store
 MeMo.app
 Version.swift
+.agents/memory/build_history.log

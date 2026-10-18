@@ -1,71 +1,38 @@
 ---
 name: critical-change-guard
-description: Defines which changes require the AI to stop and ask the developer for explicit confirmation before proceeding.
+description: Thay đổi nào phải dừng lại hỏi chủ repo, kèm guardrail về filesystem và build artifact. Gộp production-safety.
 trigger: always_on
 ---
 
-# Critical Change Guard — MeMo
+# Critical Change Guard
 
-Before performing any action in the categories below, the AI **must stop and ask the developer for confirmation**. No exceptions.
+Trước khi làm bất kỳ việc nào dưới đây, agent phải dừng, nêu rủi ro, chờ xác nhận.
 
----
+## [CRITICAL]
+1. Sửa `SMC.swift`: IOKit mức thấp, sai một byte có thể crash hoặc kernel panic. Pre-commit chặn trừ khi `ALLOW_SMC=1`.
+2. Sửa `Info.plist`, đặc biệt `LSUIElement` (icon Dock) và `CFBundleIdentifier` (domain UserDefaults, login item).
+3. Đổi cấu trúc `.app` bundle (`Contents/MacOS`, `Contents/Resources`).
+4. Thay AppKit bằng SwiftUI, thêm dependency, thêm `.xcodeproj`.
 
-## [CRITICAL] — Stop, Explain Risk, Wait For Confirmation
+## [WARN]
+5. Hạ deployment target dưới macOS 11.0.
+6. Đổi SDK path hoặc compiler flag trong `build.sh` (`-Osize`, `-wmo`, `-dead_strip`).
+7. Đổi tên hoặc xóa UserDefaults key (mất setting của bản đã cài).
 
-1. **Modifying `SMC.swift`**
-   * Low-level IOKit code. One wrong byte can crash the app or trigger a kernel panic.
-   * Response: "I do not recommend modifying this file because..."
+## [INFO] Nhắc trước khi làm
+8. Ghi ngoài thư mục project: `~/Library`, `/Applications`, `/tmp`.
+9. Chạy `install.sh` hoặc `uninstall.sh` (tác động máy thật).
+10. `rm -rf` trong project, ngoại trừ việc `build.sh` đã làm với `MeMo.app`.
 
-2. **Modifying `Info.plist`**
-   * Especially: `LSUIElement` (controls Dock icon visibility)
-   * Especially: `CFBundleIdentifier` (affects UserDefaults domain, LaunchAgent binding)
+## Không bao giờ commit
+`MeMo.app`, `MeMo_bin`, `*_arm64`, `*_x86_64`, `Version.swift`, `.agents/memory/build_history.log`, mật khẩu/token/key. `policy-check.sh` kiểm tra các file này.
 
-3. **Deleting or restructuring the `.app` bundle**
-   * Includes: `Contents/MacOS/`, `Contents/Resources/`
-
-4. **Replacing AppKit with SwiftUI**
-   * This is a major architecture change requiring a separate plan.
-
-5. **Adding any external dependency** (CocoaPods, Swift Package Manager)
-   * Project must remain zero-dependency.
-
----
-
-## [WARN] — Ask Before Doing
-
-6. **Lowering the deployment target** (below macOS 11.0)
-   * Will break multiple APIs currently in use.
-
-7. **Changing the SDK path in `build.sh`**
-   * SDK mismatch was already fixed once — regression risk is high.
-
-8. **Modifying `build.sh` compiler flags** (`-Osize`, `-wmo`, `-dead_strip`)
-   * Directly affects binary size and runtime performance.
-
-9. **Deleting or renaming UserDefaults key names**
-   * Will silently lose user settings for existing installs.
-
----
-
-## [INFO] — Remind Before Doing
-
-10. **Actions touching the filesystem outside the project folder**
-    * Writing to `~/Library/`, `/Applications/`, `/tmp/`
-
-11. **Running `install.sh` or `uninstall.sh`**
-    * These affect `/Applications/` and system LaunchAgents on the live machine.
-
----
-
-## Confirmation Template
-
+## Mẫu xác nhận
 ```
-[CRITICAL CHANGE DETECTED]
-
-Action required  : <describe the action>
-File / location  : <path>
-Reason needed    : <short explanation>
-Risk if wrong    : <describe the risk>
-
-Do you want to proceed?
+[CRITICAL CHANGE]
+Action : <việc định làm>
+Target : <file / đường dẫn>
+Why    : <lý do cần>
+Risk   : <rủi ro nếu sai>
+Proceed?
 ```

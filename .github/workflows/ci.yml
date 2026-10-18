@@ -33,3 +33,6 @@ jobs:
 
       - name: Run smoke tests
         run: ./scripts/smoke-test.sh
+
+      - name: Policy check
+        run: ./scripts/policy-check.sh
