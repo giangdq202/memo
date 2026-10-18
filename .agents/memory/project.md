@@ -2,6 +2,11 @@
 
 ## Architectural Decisions
 
+### 2026-10-18: Lazy Menu Bar Tooltip
+- **On-Demand Generation**: Conformed `UnifiedStatsView` to `NSViewToolTipOwner` and registered `bounds` via `addToolTip(_:owner:userData:)`.
+- **Zero-Allocation Hot Path**: String formatting only happens when the cursor hovers over the menu bar item, avoiding unnecessary per-tick allocations.
+- **Dynamic Content**: Displays `CPU % | RAM GB | Temp` if temperature is enabled and non-zero, or `CPU % | RAM GB` otherwise.
+
 ### 2026-10-17: History Sparkline
 - **Ring Buffers**: `cpuHistory`, `ramHistory`, and `tempHistory` keep the last 60 samples and are appended on every tick in `updateStats()`.
 - **Metric Selection**: `sparklineMetric` stores `""` (off), `"cpu"`, `"ram"`, or `"temp"`; the History Graph submenu exposes those choices.

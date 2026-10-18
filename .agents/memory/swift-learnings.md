@@ -271,3 +271,14 @@
 
 **Update While Menu Is Open**
 - Registering the sparkline's updater in `activeMenuUpdaters` means the graph refreshes on each timer tick while the dropdown is open, then is cleared in `menuDidClose`.
+
+---
+
+## Session 14 - 2026-10-18: Lazy Menu Bar Tooltip
+
+### Concepts Learned
+
+**NSViewToolTipOwner for Zero-Allocation Tooltips**
+- `NSView.toolTip` takes a precomputed String. Updating it on every timer tick wastes allocations and string formatting work when the user rarely hovers.
+- Implementing `NSViewToolTipOwner` allows AppKit to request the string lazily via `view(_:stringForToolTip:point:userData:)` only when the pointer actually hovers over the registered rectangle.
+- Overriding `setFrameSize(_:)` ensures `updateToolTipRect()` keeps the tooltip bounds synchronized whenever the status item width changes.
