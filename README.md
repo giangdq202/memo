@@ -12,6 +12,17 @@
 
 ---
 
+## Why MeMo?
+
+The market already has iStat Menus, Stats, and MenuMeters — so why build another one?
+
+- **Existing monitors are bloated.** MeMo keeps only what one personal machine needs; network monitoring was even removed deliberately when it proved unnecessary. Every feature has to earn its place.
+- **Customization where it matters.** Color thresholds, display format, update interval — tuned to the owner's taste instead of a settings museum. The UI is compact by design, not by config.
+- **Open, auditable, local.** Zero dependencies, no telemetry. Every number is read directly from SMC, Mach, or `ps` on this machine — you can trace where each value comes from in the source.
+- **A learning vehicle, not a product.** Built to learn Swift and macOS internals hands-on. When the feature set is enough, it stays enough: no feature race, no roadmap pressure.
+
+---
+
 ## Quick Start
 
 ### One-Line Download & Install
