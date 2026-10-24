@@ -5,14 +5,6 @@ import Foundation
 // UserDefaults once at startup and kept in memory; setters write through.
 // Callers apply UI side effects themselves — this type only stores state.
 
-/// Selects which metric the history sparkline displays.
-public enum SparklineMetric: String {
-    case off = ""
-    case cpu = "cpu"
-    case ram = "ram"
-    case temp = "temp"
-}
-
 /// Central, cached access to all persisted user preferences.
 /// Keys and defaults are documented in AGENTS.md; do not rename keys
 /// (installed copies would silently lose their settings).
@@ -25,7 +17,6 @@ public final class AppSettings {
     private var _updateInterval: TimeInterval
     private var _tempUnit: String
     private var _showCPUTemperature: Bool
-    private var _sparklineMetric: SparklineMetric
 
     /// - Parameter defaults: persistence backend; injectable for tests.
     public init(defaults: UserDefaults = .standard) {
@@ -34,7 +25,6 @@ public final class AppSettings {
         self._updateInterval = storedInterval > 0 ? storedInterval : 2.0
         self._tempUnit = defaults.string(forKey: "tempUnit") ?? "C"
         self._showCPUTemperature = defaults.object(forKey: "showCPUTemperature") as? Bool ?? true
-        self._sparklineMetric = SparklineMetric(rawValue: defaults.string(forKey: "sparklineMetric") ?? "") ?? .off
     }
 
     /// Refresh interval in seconds. Preset values: 0.25, 0.5, 1.0, 2.0, 5.0.
@@ -61,15 +51,6 @@ public final class AppSettings {
         set {
             _showCPUTemperature = newValue
             defaults.set(newValue, forKey: "showCPUTemperature")
-        }
-    }
-
-    /// Which metric (if any) the dropdown history sparkline displays.
-    public var sparklineMetric: SparklineMetric {
-        get { _sparklineMetric }
-        set {
-            _sparklineMetric = newValue
-            defaults.set(newValue.rawValue, forKey: "sparklineMetric")
         }
     }
 }

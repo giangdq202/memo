@@ -16,12 +16,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private var currentCpuStats = CPUStats()
     private var currentMemStats = MemoryStats()
 
-    // History ring buffers for the dropdown sparkline
-    private var cpuHistory: [Double] = []
-    private var ramHistory: [Double] = []
-    private var tempHistory: [Double] = []
-    private let historyCapacity = 60
-
     // MARK: - Wired Dependencies
 
     /// Single source of truth for user preferences (cached, write-through).
@@ -83,7 +77,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private func updateStats() {
         // Skip all SMC work when no temperature consumer is active.
         let needsTemp = settings.showCPUTemperature
-            || settings.sparklineMetric == .temp
             || menuFactory.hasLiveMenu
 
         currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
@@ -102,11 +95,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             pressureLevel: currentMemStats.pressureLevel
         )
 
-        menuFactory.refreshLiveRows(
-            cpu: currentCpuStats,
-            mem: currentMemStats,
-            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
-        )
+        menuFactory.refreshLiveRows(cpu: currentCpuStats, mem: currentMemStats)
     }
 
     // MARK: - Menu Presentation
@@ -125,8 +114,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         let menu = menuFactory.buildDropdownMenu(
             cpu: currentCpuStats,
             mem: currentMemStats,
-            top: statsEngine.fetchTopProcesses(limit: 3),
-            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
+            top: statsEngine.fetchTopProcesses(limit: 3)
         )
 
         statusItem.menu = menu
@@ -192,12 +180,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             settings.tempUnit = unit
             renderCurrentStats()
         }
-    }
-
-    @objc func changeSparklineMetric(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let metric = SparklineMetric(rawValue: raw) else { return }
-        settings.sparklineMetric = metric
     }
 
     @objc func openGitHubPage() {

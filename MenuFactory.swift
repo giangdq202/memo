@@ -15,14 +15,6 @@ import AppKit
     func toggleLaunchAtLogin(_ sender: NSMenuItem)
     func changeInterval(_ sender: NSMenuItem)
     func changeTempUnit(_ sender: NSMenuItem)
-    func changeSparklineMetric(_ sender: NSMenuItem)
-}
-
-/// History samples for the sparkline, handed to the factory on each refresh.
-struct HistoryBuffers {
-    let cpu: [Double]
-    let ram: [Double]
-    let temp: [Double]
 }
 
 /// Assembles every NSMenu the status item shows and keeps live rows in sync
@@ -41,13 +33,11 @@ final class MenuFactory: NSObject, NSMenuDelegate {
     private var cachedGitHubItem: NSMenuItem?
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
-    private var cachedSparklineSubmenu: NSMenu?
 
     // Live rows: updaters run on each tick while the menu is open.
     private var liveUpdaters: [() -> Void] = []
     private var latestCpu = CPUStats()
     private var latestMem = MemoryStats()
-    private var latestHistories = HistoryBuffers(cpu: [], ram: [], temp: [])
 
     /// Whether a menu with live rows is currently open.
     var hasLiveMenu: Bool { !liveUpdaters.isEmpty }
@@ -118,22 +108,8 @@ final class MenuFactory: NSObject, NSMenuDelegate {
         tempUnitItem.submenu = tempUnitSubmenu
         cachedTempUnitSubmenu = tempUnitSubmenu
 
-        let sparklineSubmenu = NSMenu()
-        let sparklineOptions: [(String, SparklineMetric)] = [
-            ("Off", .off), ("CPU", .cpu), ("RAM", .ram), ("Temperature", .temp)
-        ]
-        for (label, metric) in sparklineOptions {
-            let item = NSMenuItem(title: label, action: #selector(MenuActions.changeSparklineMetric(_:)), keyEquivalent: "")
-            item.target = actions
-            item.representedObject = metric.rawValue
-            sparklineSubmenu.addItem(item)
-        }
-        let sparklineItem = NSMenuItem(title: "History Graph", action: nil, keyEquivalent: "")
-        sparklineItem.submenu = sparklineSubmenu
-        cachedSparklineSubmenu = sparklineSubmenu
-
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem, sparklineItem]
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem]
     }
 
     private func buildFooterItems() {
@@ -175,14 +151,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
             }
         }
 
-        let selectedSparkline = settings.sparklineMetric
-        if let submenu = cachedSparklineSubmenu {
-            for item in submenu.items {
-                if let raw = item.representedObject as? String {
-                    item.state = (selectedSparkline.rawValue == raw) ? .on : .off
-                }
-            }
-        }
     }
 
     /// Detaches a cached item from its previous menu (if any) and adds it to the
@@ -203,11 +171,9 @@ final class MenuFactory: NSObject, NSMenuDelegate {
     ///   - histories: Ring buffers backing the sparkline.
     /// - Returns: A configured menu with live rows ready for refresh ticks.
     func buildDropdownMenu(cpu: CPUStats, mem: MemoryStats,
-                           top: (byCPU: [ProcessUsage], byMemory: [ProcessUsage]),
-                           histories: HistoryBuffers) -> NSMenu {
+                           top: (byCPU: [ProcessUsage], byMemory: [ProcessUsage])) -> NSMenu {
         latestCpu = cpu
         latestMem = mem
-        latestHistories = histories
 
         refreshSettingsStates()
 
@@ -303,33 +269,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem.separator())
         }
 
-        // --- History Section ---
-        let sparkline = settings.sparklineMetric
-        if sparkline != .off {
-            menu.addItem(MenuRowFactory.sectionHeader("History"))
-            let historyItem = NSMenuItem(title: "History", action: nil, keyEquivalent: "")
-            historyItem.isEnabled = false
-            menu.addItem(historyItem)
-            customViews.append((historyItem, { [weak self] width in
-                guard let self = self else { return (NSView(), {}) }
-                let view = SparklineView(frame: NSRect(x: 0, y: 0, width: width, height: 40))
-                let values = self.historyValues(for: sparkline)
-                view.values = values
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                view.lineColor = Self.sparklineColor(for: sparkline, value: values.last ?? 0.0, isDark: isDark)
-                let updater = { [weak self, weak view] in
-                    guard let self = self, let view = view else { return }
-                    let newValues = self.historyValues(for: sparkline)
-                    view.values = newValues
-                    let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    view.lineColor = Self.sparklineColor(for: sparkline, value: newValues.last ?? 0.0, isDark: dark)
-                    view.needsDisplay = true
-                }
-                return (view, updater)
-            }))
-            menu.addItem(NSMenuItem.separator())
-        }
-
         // --- Top Processes Section ---
         // Rows start as plain items so the menu can compute its natural width; below
         // we swap in width-filling views that right-align the value flush to that width.
@@ -408,10 +347,9 @@ final class MenuFactory: NSObject, NSMenuDelegate {
 
     /// Stores the latest sampled values and reruns every live-row updater.
     /// No-op while no menu is open.
-    func refreshLiveRows(cpu: CPUStats, mem: MemoryStats, histories: HistoryBuffers) {
+    func refreshLiveRows(cpu: CPUStats, mem: MemoryStats) {
         latestCpu = cpu
         latestMem = mem
-        latestHistories = histories
         for updater in liveUpdaters {
             updater()
         }
@@ -419,25 +357,5 @@ final class MenuFactory: NSObject, NSMenuDelegate {
 
     public func menuDidClose(_ menu: NSMenu) {
         liveUpdaters.removeAll()
-    }
-
-    /// Returns the history buffer backing the selected sparkline metric.
-    private func historyValues(for metric: SparklineMetric) -> [Double] {
-        switch metric {
-        case .cpu: return latestHistories.cpu
-        case .ram: return latestHistories.ram
-        case .temp: return latestHistories.temp
-        case .off: return []
-        }
-    }
-
-    /// Threshold color for the sparkline's most recent sample.
-    private static func sparklineColor(for metric: SparklineMetric, value: Double, isDark: Bool) -> NSColor {
-        switch metric {
-        case .cpu: return colorForUsage(value, isDark: isDark, metricPrefix: "cpu")
-        case .ram: return colorForUsage(value, isDark: isDark, metricPrefix: "mem")
-        case .temp: return colorForTemperature(value, isDark: isDark)
-        case .off: return .secondaryLabelColor
-        }
     }
 }
