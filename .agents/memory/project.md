@@ -1,5 +1,13 @@
 # Project Memory - MeMo Fork
 
+## Product Philosophy (owner-confirmed 2026-10-24)
+
+- **Purpose**: a personal, minimal menu bar monitor built as a Swift learning vehicle. Not a product; not a feature race.
+- **Why not an existing app**: owner rejects all four — bloat/unnecessary features, UI that does not fit, closed source/privacy, opaque numbers with no way to verify where they come from.
+- **Values**: tinkering, portfolio, full control over what runs on the machine.
+- **Scope rule ("đủ dùng là dừng")**: once the feature set is enough, stop. When considering a new feature, it must serve the owner's daily use AND teach something new; otherwise decline.
+- Precedent: network monitoring was removed (2026-10-17) exactly because it exceeded personal need.
+
 ## Architectural Decisions
 
 ### 2026-10-24: MVC / Clean Architecture Layering
