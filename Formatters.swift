@@ -72,27 +72,9 @@ func convertedTemperature(_ celsius: Double, unit: String) -> Double {
     return unit == "F" ? celsius * 1.8 + 32.0 : celsius
 }
 
-/// Returns the full temperature display string (value plus unit) for menu rows.
-public func formatTemperature(_ celsius: Double, unit: String) -> String {
-    guard celsius > 0 else { return "--" }
-    return String(format: "%.0f°%@", convertedTemperature(celsius, unit: unit), unit)
-}
-
 /// Returns only the numeric temperature string for the menu bar, which draws
 /// the unit separately.
 public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
     guard celsius > 0 else { return "--" }
     return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
-}
-
-/// Formats a CPU percentage for menu rows.
-public func formatCPU(_ percent: Double) -> String {
-    return String(format: "%.0f%%", percent)
-}
-
-/// Formats a byte count for menu rows, preferring GB and falling back to MB.
-public func formatMemory(_ bytes: UInt64) -> String {
-    let gb = Double(bytes) / 1_073_741_824.0
-    if gb >= 1.0 { return String(format: "%.1f GB", gb) }
-    return String(format: "%.0f MB", Double(bytes) / 1_048_576.0)
 }

@@ -19,10 +19,8 @@ guard cpu.usagePercent >= 0 && cpu.usagePercent <= 100 else { fatalError("usageP
 guard mem.totalBytes > 0 else { fatalError("totalBytes is zero") }
 guard mem.usedBytes > 0 else { fatalError("usedBytes is zero") }
 
-precondition(formatCPU(42.0) == "42%")
-precondition(formatMemory(2 * 1024 * 1024 * 1024) == "2.0 GB")
-precondition(formatTemperature(100.0, unit: "C") == "100°C")
-precondition(formatTemperature(100.0, unit: "F") == "212°F")
+precondition(formatTemperatureValue(100.0, unit: "C") == "100")
+precondition(formatTemperatureValue(100.0, unit: "F") == "212")
 
 print("Smoke tests passed: cores=\(cpu.coreCount), mem=\(String(format: "%.1f", mem.totalGB)) GB")
 SWIFT
