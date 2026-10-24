@@ -38,14 +38,34 @@ private let singleValFont = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weigh
 private let singleUnitFont = NSFont.monospacedDigitSystemFont(ofSize: 9.0, weight: .bold)
 private let singleSectionGap: CGFloat = 5.0
 
+/// Swiss-style mid-dot separators keep the three metrics from blurring into
+/// one digit run, and anchor a fixed rhythm no matter how digits vary.
+private let separatorDot: NSAttributedString = {
+    let centered = NSMutableParagraphStyle()
+    centered.alignment = .center
+    let s = NSAttributedString(string: "·", attributes: [
+        .font: singleUnitFont,
+        .foregroundColor: NSColor.tertiaryLabelColor,
+        .paragraphStyle: centered
+    ])
+    return s
+}()
+private let separatorSlotWidth = measuredWidth("·", font: singleUnitFont) + 2.0 * singleSectionGap
+
 /// Measures the render width of `text` and adds a pixel of headroom.
 private func measuredWidth(_ text: String, font: NSFont) -> CGFloat {
     ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width) + 1.0
 }
 
+/// The unit suffix drawn after a temperature value: bare "°" for Celsius
+/// (unambiguous on the owner's own machine), "°F" for Fahrenheit.
+private func temperatureUnitSuffix(_ unit: String) -> String {
+    return unit == "F" ? "°F" : "°"
+}
+
 private let singleCpuSectionWidth = measuredWidth("100%", font: singleValFont)
 private let singleRamSectionWidth = measuredWidth("888.8G", font: singleValFont)
-private let singleTempSectionWidth = measuredWidth("188°C", font: singleValFont)
+private let singleTempSectionWidth = measuredWidth("188°", font: singleValFont)
 
 // MARK: - Unified Status Bar View with Cached Rendering
 public class UnifiedStatsView: BaseStatsView {
@@ -65,8 +85,8 @@ public class UnifiedStatsView: BaseStatsView {
     public static func calculateWidth(showTemperature: Bool, layoutMode: MenuBarLayout = .single) -> CGFloat {
         switch layoutMode {
         case .single:
-            var w = singleCpuSectionWidth + singleSectionGap + singleRamSectionWidth
-            if showTemperature { w += singleSectionGap + singleTempSectionWidth }
+            var w = singleCpuSectionWidth + separatorSlotWidth + singleRamSectionWidth
+            if showTemperature { w += separatorSlotWidth + singleTempSectionWidth }
             return w
         case .stacked:
             return cpuMemWidth + (showTemperature ? temperatureSectionWidth : 0.0)
@@ -181,7 +201,9 @@ public class UnifiedStatsView: BaseStatsView {
             cachedSingleCpuLine = s
         }
         cachedSingleCpuLine?.draw(in: CGRect(x: x, y: y, width: singleCpuSectionWidth, height: lineH))
-        x += singleCpuSectionWidth + singleSectionGap
+        x += singleCpuSectionWidth
+        separatorDot.draw(in: CGRect(x: x, y: y, width: separatorSlotWidth, height: lineH))
+        x += separatorSlotWidth
 
         if cachedSingleRamLine == nil || _memGB != lastMemGB {
             lastMemGB = _memGB
@@ -195,9 +217,12 @@ public class UnifiedStatsView: BaseStatsView {
             cachedSingleRamLine = s
         }
         cachedSingleRamLine?.draw(in: CGRect(x: x, y: y, width: singleRamSectionWidth, height: lineH))
-        x += singleRamSectionWidth + singleSectionGap
 
         if showTemperature {
+            x += singleRamSectionWidth
+            separatorDot.draw(in: CGRect(x: x, y: y, width: separatorSlotWidth, height: lineH))
+            x += separatorSlotWidth
+
             if cachedSingleTempLine == nil || _cpuTemperature != lastTempC || _tempUnit != lastTempUnit {
                 lastTempC = _cpuTemperature
                 lastTempUnit = _tempUnit
@@ -206,7 +231,7 @@ public class UnifiedStatsView: BaseStatsView {
                     .font: singleValFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
                 ]))
                 if _cpuTemperature > 0 {
-                    s.append(NSAttributedString(string: "°\(_tempUnit)", attributes: [
+                    s.append(NSAttributedString(string: temperatureUnitSuffix(_tempUnit), attributes: [
                         .font: singleUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
                     ]))
                 }
@@ -260,7 +285,7 @@ public class UnifiedStatsView: BaseStatsView {
 
                 // Unit line (bottom, standard font, dimmed)
                 let s2 = NSMutableAttributedString()
-                s2.append(NSAttributedString(string: _cpuTemperature > 0 ? "°" + _tempUnit : "", attributes: [
+                s2.append(NSAttributedString(string: _cpuTemperature > 0 ? temperatureUnitSuffix(_tempUnit) : "", attributes: [
                     .font: cpuMemUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
                 ]))
                 cachedTempUnitLine = s2
