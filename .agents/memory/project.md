@@ -11,6 +11,11 @@
 
 ## Architectural Decisions
 
+### 2026-10-24: Separator Rhythm (PR #37)
+- **Problem (from owner's screenshot)**: at 11pt the three right-aligned metrics blurred into one digit run.
+- **Fix**: Swiss-style mid-dot separators (`·`, tertiaryLabelColor, 9pt, centered in fixed slots) between metrics — `13% · 17.9G · 43°`; constant rhythm regardless of digit counts. Celsius renders bare `°`; Fahrenheit keeps `°F`.
+- **Verified visually** via screencapture + vision analysis (distinct groups, dots dimmer than values, native fit).
+
 ### 2026-10-24: Monochrome Design
 - **All rendering now system monochrome**: values in `labelColor`, units (%, G, °C) in `secondaryLabelColor`, both layouts (single-line and stacked). Semantic NSColors adapt to Dark/Light automatically.
 - **Deleted the color machinery**: AlertLevel, discreteColor, levelForValue, colorForUsage, colorForTemperature - Formatters.swift is now Foundation-only with just convertedTemperature + formatTemperatureValue.
