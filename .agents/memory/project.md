@@ -10,6 +10,13 @@
 
 ## Architectural Decisions
 
+### 2026-10-24: Menu Bar First Simplification
+- **Applied the Product Philosophy**: owner confirmed they never use the left-click dropdown, so the menu bar numbers are now the entire UI.
+- **Removed**: threshold alerts (AlertCoordinator deleted), history sparkline (view, ring buffers, submenu), top-processes sampling (no more /bin/ps subprocess), the hover tooltip (NSViewToolTipOwner), and the whole dropdown with its live-row updaters and menu width-swap hack (MenuViews.swift deleted).
+- **Unified Menu**: left- and right-click open the same settings menu (version header, settings, Activity Monitor, GitHub, Quit); MenuFactory is static-only.
+- **Added `menuBarLayout`**: "single" (default, `12% 8.2G 45°C` one line, per-metric threshold colors, fixed section widths measured from worst-case strings so digits never shift the item) or "stacked" (classic two-line).
+- **UserDefaults keys removed**: `cpuAlertThreshold`, `ramAlertThreshold`, `tempAlertThreshold`, `sparklineMetric`; added `menuBarLayout`. SMC idle skip now keys off `showCPUTemperature` alone.
+
 ### 2026-10-24: MVC / Clean Architecture Layering
 - **AppDelegate Split**: The 1048-line god class became a 280-line controller plus five focused files. Dependency rule: Model knows nobody, Controller reads Model and drives View, View renders plain values only.
 - **New Files**: `Formatters.swift` (presentation helpers), `AppSettings.swift` (cached write-through settings store, single owner of all UserDefaults keys except `LaunchAtLogin`), `LoginItemService.swift` (SMAppService + plist fallback), `MenuViews.swift` (row components behind `MenuRowFactory`), `AlertCoordinator.swift` (threshold notifications), `MenuFactory.swift` (menu assembly, static item cache, live-row updaters).

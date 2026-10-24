@@ -46,20 +46,16 @@ curl -fsSL https://raw.githubusercontent.com/giangdq202/memo/main/uninstall.sh |
 ## Key Features
 
 - **Ultra-Lightweight & Blazing Fast**: Written entirely in native Swift, guaranteeing a minimal memory and CPU footprint. No bloated Xcode projects or heavy third-party dependencies.
-- **Dual-Column Menu Bar Display**:
-  - **CPU/Memory**: Live CPU load (%, top) and RAM usage (G, bottom). Smart color thresholds (Green -> Yellow -> Red) instantly warn you under heavy load.
-  - **Temperature**: Average CPU temperature (top) and unit (C or F, bottom). Text colors shift dynamically based on heat levels.
-- **Top Resource Hogs at a Glance**: Opening the menu instantly reveals the apps consuming the most **CPU** and **memory**, ranked in real time. Helper processes (like a browser's many renderers) are rolled up into their parent app, and background system daemons are filtered out so you only see the apps that actually matter.
-- **Threshold Alerts**: Optional macOS notifications for CPU usage, memory usage, and CPU temperature. Each metric has its own user-selectable threshold preset, and a 60-second cooldown prevents notification spam.
-- **History Sparkline**: An optional in-menu graph shows the last 60 samples of CPU, RAM, or temperature. Pick the metric from the History Graph submenu; choose Off to hide it.
-- **Quick Settings Menu**: Left or right-click the menu bar icon to access:
-  - **Open Activity Monitor**: Jump straight to macOS Activity Monitor for the full, detailed breakdown.
+- **Menu Bar Display Is the App**:
+  - **Single Line** (default): `12% 8.2G 45°C` on one line — CPU load, RAM usage, and CPU temperature, each colored by its own threshold (Green -> Yellow -> Orange -> Red).
+  - **Two Lines**: the classic stacked layout (CPU over RAM, temperature column on the right) if you prefer a narrower item.
+- **One Menu, Nothing Else**: Left- or right-click opens the same compact settings menu — no dashboard, no process list, no notifications:
   - **Show CPU Temperature**: Toggle the visibility of the CPU temperature column.
   - **Launch at Login**: Easily toggle automatic startup. (Seamlessly uses macOS 13+ `SMAppService`, with automatic fallbacks to LaunchAgents plist for older systems).
   - **Update Interval**: Customize how often data refreshes (250ms, 500ms, 1s, 2s, or 5s).
   - **Temperature Unit**: Switch effortlessly between Celsius and Fahrenheit.
-  - **CPU / RAM / Temperature Alerts**: Choose an off/on threshold preset per metric; MeMo posts a notification when the metric crosses it (60-second cooldown).
-  - **History Graph**: Show a sparkline of recent CPU, RAM, or temperature samples inside the dropdown menu.
+  - **Menu Bar Layout**: Choose Single Line or Two Lines.
+  - **Open Activity Monitor**: Jump straight to macOS Activity Monitor when you need the full, detailed breakdown.
   - **GitHub Repository**: Direct link to the source code.
   - **Quit MeMo**: Safely close the app.
 - **Dynamic SMC Temperature Scanning**: On startup, it automatically discovers active SMC temperature sensors for Apple Silicon (M1/M2/M3/M4/M5) chips including efficiency cores, performance cores, and general sensors to calculate a highly accurate real-time average.
