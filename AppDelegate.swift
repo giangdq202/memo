@@ -113,8 +113,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
 
         let menu = menuFactory.buildDropdownMenu(
             cpu: currentCpuStats,
-            mem: currentMemStats,
-            top: statsEngine.fetchTopProcesses(limit: 3)
+            mem: currentMemStats
         )
 
         statusItem.menu = menu

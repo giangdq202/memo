@@ -167,11 +167,8 @@ final class MenuFactory: NSObject, NSMenuDelegate {
     /// - Parameters:
     ///   - cpu: CPU stats (usage, temperature, clusters) to display.
     ///   - mem: Memory stats to display.
-    ///   - top: Top-process rankings fetched by the controller on open.
-    ///   - histories: Ring buffers backing the sparkline.
     /// - Returns: A configured menu with live rows ready for refresh ticks.
-    func buildDropdownMenu(cpu: CPUStats, mem: MemoryStats,
-                           top: (byCPU: [ProcessUsage], byMemory: [ProcessUsage])) -> NSMenu {
+    func buildDropdownMenu(cpu: CPUStats, mem: MemoryStats) -> NSMenu {
         latestCpu = cpu
         latestMem = mem
 
@@ -265,30 +262,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
                     }
                     return (view, updater)
                 }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // --- Top Processes Section ---
-        // Rows start as plain items so the menu can compute its natural width; below
-        // we swap in width-filling views that right-align the value flush to that width.
-        if !top.byCPU.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Top CPU"))
-            for p in top.byCPU {
-                let value = formatCPU(p.cpuPercent)
-                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
-                menu.addItem(item)
-                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-        if !top.byMemory.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Top Memory"))
-            for p in top.byMemory {
-                let value = formatMemory(p.memoryBytes)
-                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
-                menu.addItem(item)
-                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
             }
             menu.addItem(NSMenuItem.separator())
         }
