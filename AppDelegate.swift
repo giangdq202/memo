@@ -340,7 +340,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         menu.addItem(cpuItem)
         customViews.append((cpuItem, { [weak self] width in 
             guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = Self.progressBarRow(label: "CPU", percent: self.currentCpuStats.usagePercent, valueText: formatCPU(self.currentCpuStats.usagePercent), prefix: "cpu", width: width)
+            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "CPU", percent: self.currentCpuStats.usagePercent, valueText: formatCPU(self.currentCpuStats.usagePercent), prefix: "cpu", width: width)
             let updater = { [weak self, weak view] in
                 guard let self = self, let view = view else { return }
                 let pct = self.currentCpuStats.usagePercent
@@ -356,7 +356,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         customViews.append((ramItem, { [weak self] width in 
             guard let self = self else { return (NSView(), {}) }
             let valStr = String(format: "%.1f/%.0f GB", self.currentMemStats.usedGB, self.currentMemStats.totalGB)
-            let (view, updateBlock) = Self.progressBarRow(label: "RAM", percent: self.currentMemStats.usedPercent, valueText: valStr, prefix: "mem", width: width, pressureLevel: self.currentMemStats.pressureLevel)
+            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "RAM", percent: self.currentMemStats.usedPercent, valueText: valStr, prefix: "mem", width: width, pressureLevel: self.currentMemStats.pressureLevel)
             let updater = { [weak self, weak view] in
                 guard let self = self, let view = view else { return }
                 let pct = self.currentMemStats.usedPercent
@@ -375,7 +375,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
             guard let self = self else { return (NSView(), {}) }
             let t = self.currentCpuStats.temperature
             let valStr = formatTemperature(t, unit: self.tempUnit)
-            let (view, updateBlock) = Self.inlineRow(label: "Temp", valueText: valStr, isTemp: true, tempVal: t, width: width)
+            let (view, updateBlock) = MenuRowFactory.inlineRow(label: "Temp", valueText: valStr, isTemp: true, tempVal: t, width: width)
             let updater = { [weak self, weak view] in
                 guard let self = self, let view = view else { return }
                 let tNew = self.currentCpuStats.temperature
@@ -390,7 +390,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
 
         // --- Temperatures Section ---
         if !self.currentCpuStats.tempClusters.isEmpty {
-            menu.addItem(Self.sectionHeader("Temperatures"))
+            menu.addItem(MenuRowFactory.sectionHeader("Temperatures"))
             for cluster in self.currentCpuStats.tempClusters {
                 let item = NSMenuItem(title: "\(cluster.name)    \(String(format: "%.0f°C", cluster.temperature))", action: nil, keyEquivalent: "")
                 item.isEnabled = false
@@ -401,7 +401,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
                     let t = cluster.temperature
                     let valStr = formatTemperature(t, unit: self.tempUnit)
                     
-                    let (view, updateBlock) = Self.tempClusterRow(name: cluster.name, valueText: valStr, tempVal: t, width: width)
+                    let (view, updateBlock) = MenuRowFactory.tempClusterRow(name: cluster.name, valueText: valStr, tempVal: t, width: width)
                     let updater = { [weak self, weak view] in
                         guard let self = self, let view = view else { return }
                         // Find this cluster's updated temperature
@@ -420,7 +420,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         // --- History Section ---
         let sparkline = sparklineMetric
         if sparkline != .off {
-            menu.addItem(Self.sectionHeader("History"))
+            menu.addItem(MenuRowFactory.sectionHeader("History"))
             let historyItem = NSMenuItem(title: "History", action: nil, keyEquivalent: "")
             historyItem.isEnabled = false
             menu.addItem(historyItem)
@@ -450,22 +450,22 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         // we swap in width-filling views that right-align the value flush to that width.
         let top = statsEngine.fetchTopProcesses(limit: 3)
         if !top.byCPU.isEmpty {
-            menu.addItem(Self.sectionHeader("Top CPU"))
+            menu.addItem(MenuRowFactory.sectionHeader("Top CPU"))
             for p in top.byCPU {
                 let value = formatCPU(p.cpuPercent)
-                let item = Self.provisionalUsageItem(name: p.name, value: value)
+                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
                 menu.addItem(item)
-                customViews.append((item, { w in (Self.usageRowView(name: p.name, value: value, width: w), {}) }))
+                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
             }
             menu.addItem(NSMenuItem.separator())
         }
         if !top.byMemory.isEmpty {
-            menu.addItem(Self.sectionHeader("Top Memory"))
+            menu.addItem(MenuRowFactory.sectionHeader("Top Memory"))
             for p in top.byMemory {
                 let value = formatMemory(p.memoryBytes)
-                let item = Self.provisionalUsageItem(name: p.name, value: value)
+                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
                 menu.addItem(item)
-                customViews.append((item, { w in (Self.usageRowView(name: p.name, value: value, width: w), {}) }))
+                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
             }
             menu.addItem(NSMenuItem.separator())
         }
@@ -717,193 +717,4 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         NSApplication.shared.terminate(nil)
     }
 
-    // MARK: - Top Processes menu rendering
-
-    private static func sectionHeader(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold),
-            .foregroundColor: NSColor.secondaryLabelColor
-        ])
-        return item
-    }
-
-    /// A placeholder row used only so the menu can size itself to fit the widest
-    /// "name  value" pair before we swap in the final width-filling view.
-    private static func provisionalUsageItem(name: String, value: String) -> NSMenuItem {
-        let display = name.count > 28 ? String(name.prefix(27)) + "…" : name
-        let item = NSMenuItem(title: "\(display)    \(value)", action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
-    /// A non-interactive row that fills the menu's full `width`: app name on the
-    /// left (truncated to fit), value flush to the right edge. Filling the width
-    /// is what removes the trailing empty space a fixed tab stop would leave.
-    private static func usageRowView(name: String, value: String, width: CGFloat) -> NSView {
-        let leftInset: CGFloat = 21
-        let rightInset: CGFloat = 21
-        let font = NSFont.menuFont(ofSize: 0)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 20))
-
-        let valueWidth = NSAttributedString(string: value, attributes: [.font: font]).size().width
-        let valueLabel = NSTextField(labelWithString: value)
-        valueLabel.font = font
-        valueLabel.textColor = .secondaryLabelColor
-        valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: width - rightInset - valueWidth, y: 2, width: valueWidth + 1, height: 16)
-        valueLabel.autoresizingMask = [.minXMargin]
-        container.addSubview(valueLabel)
-
-        let nameLabel = NSTextField(labelWithString: name)
-        nameLabel.font = font
-        nameLabel.textColor = .labelColor
-        nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.maximumNumberOfLines = 1
-        nameLabel.frame = NSRect(x: leftInset, y: 2,
-                                 width: max(0, valueLabel.frame.minX - 8 - leftInset), height: 16)
-        nameLabel.autoresizingMask = [.width]
-        container.addSubview(nameLabel)
-
-        return container
-    }
-
-    private static func tempClusterRow(name: String, valueText: String, tempVal: Double, width: CGFloat) -> (NSView, (String, NSColor) -> Void) {
-        let leftInset: CGFloat = 21
-        let rightInset: CGFloat = 21
-        let font = NSFont.menuFont(ofSize: 0)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 20))
-
-        let maxLabelWidth: CGFloat = 60
-        let valueLabel = NSTextField(labelWithString: valueText)
-        valueLabel.font = font
-        valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: width - rightInset - maxLabelWidth, y: 2, width: maxLabelWidth, height: 16)
-        valueLabel.autoresizingMask = [.minXMargin]
-        
-        let isDark = container.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        if tempVal > 0 {
-            valueLabel.textColor = colorForTemperature(tempVal, isDark: isDark)
-        } else {
-            valueLabel.textColor = .secondaryLabelColor
-        }
-        
-        container.addSubview(valueLabel)
-
-        let nameLabel = NSTextField(labelWithString: name)
-        nameLabel.font = font
-        nameLabel.textColor = .labelColor
-        nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.maximumNumberOfLines = 1
-        nameLabel.frame = NSRect(x: leftInset, y: 2,
-                                 width: max(0, valueLabel.frame.minX - 8 - leftInset), height: 16)
-        nameLabel.autoresizingMask = [.width]
-        container.addSubview(nameLabel)
-
-        let updater: (String, NSColor) -> Void = { newStr, newColor in
-            valueLabel.stringValue = newStr
-            valueLabel.textColor = newColor
-        }
-        
-        return (container, updater)
-    }
-
-    private static func progressBarRow(label: String, percent: Double, valueText: String, prefix: String, width: CGFloat, pressureLevel: Int = 0) -> (NSView, (Double, String, NSColor) -> Void) {
-        let leftInset: CGFloat = 21
-        let rightInset: CGFloat = 21
-        let font = NSFont.menuFont(ofSize: 0)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 20))
-
-        let maxLabelWidth: CGFloat = 100
-        let valueLabel = NSTextField(labelWithString: valueText)
-        valueLabel.font = font
-        valueLabel.textColor = .secondaryLabelColor
-        valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: width - rightInset - maxLabelWidth, y: 2, width: maxLabelWidth, height: 16)
-        valueLabel.autoresizingMask = [.minXMargin]
-        container.addSubview(valueLabel)
-
-        let nameLabel = NSTextField(labelWithString: label)
-        nameLabel.font = font
-        nameLabel.textColor = .labelColor
-        nameLabel.frame = NSRect(x: leftInset, y: 2, width: 35, height: 16)
-        container.addSubview(nameLabel)
-
-        let barX = leftInset + 40
-        let barW = max(0, valueLabel.frame.minX - 8 - barX)
-        let barView = ProgressBarView(frame: NSRect(x: barX, y: 6, width: barW, height: 8))
-        barView.percent = percent
-        barView.autoresizingMask = [.width]
-        
-        let isDark = container.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        barView.fillColor = colorForUsage(percent, isDark: isDark, metricPrefix: prefix, pressureLevel: pressureLevel)
-        
-        container.addSubview(barView)
-        
-        let updater: (Double, String, NSColor) -> Void = { newPercent, newStr, newColor in
-            valueLabel.stringValue = newStr
-            barView.percent = newPercent
-            barView.fillColor = newColor
-            barView.needsDisplay = true
-        }
-        
-        return (container, updater)
-    }
-
-    private static func inlineRow(label: String, valueText: String, isTemp: Bool, tempVal: Double, width: CGFloat) -> (NSView, (String, NSColor) -> Void) {
-        let leftInset: CGFloat = 21
-        let rightInset: CGFloat = 21
-        let font = NSFont.menuFont(ofSize: 0)
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 20))
-
-        let maxLabelWidth: CGFloat = 100
-        let valueLabel = NSTextField(labelWithString: valueText)
-        valueLabel.font = font
-        valueLabel.alignment = .right
-        valueLabel.frame = NSRect(x: width - rightInset - maxLabelWidth, y: 2, width: maxLabelWidth, height: 16)
-        valueLabel.autoresizingMask = [.minXMargin]
-        
-        let isDark = container.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        if isTemp && tempVal > 0 {
-            valueLabel.textColor = colorForTemperature(tempVal, isDark: isDark)
-        } else {
-            valueLabel.textColor = .secondaryLabelColor
-        }
-        
-        container.addSubview(valueLabel)
-
-        let nameLabel = NSTextField(labelWithString: label)
-        nameLabel.font = font
-        nameLabel.textColor = .labelColor
-        nameLabel.frame = NSRect(x: leftInset, y: 2, width: 35, height: 16)
-        container.addSubview(nameLabel)
-
-        let updater: (String, NSColor) -> Void = { newStr, newColor in
-            valueLabel.stringValue = newStr
-            valueLabel.textColor = newColor
-        }
-        
-        return (container, updater)
-    }
-}
-
-class ProgressBarView: NSView {
-    var percent: Double = 0
-    var fillColor: NSColor = .systemBlue
-
-    override func draw(_ dirtyRect: NSRect) {
-        let trackPath = NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4)
-        NSColor.tertiaryLabelColor.withAlphaComponent(0.2).setFill()
-        trackPath.fill()
-
-        let p = min(max(percent, 0.0), 100.0) / 100.0
-        if p > 0 {
-            let w = max(bounds.height, bounds.width * CGFloat(p))
-            let fillRect = NSRect(x: 0, y: 0, width: w, height: bounds.height)
-            let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: 4, yRadius: 4)
-            fillColor.setFill()
-            fillPath.fill()
-        }
-    }
 }
