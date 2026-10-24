@@ -26,7 +26,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
 
     /// Single source of truth for user preferences (cached, write-through).
     private let settings = AppSettings.shared
-    private lazy var alertCoordinator = AlertCoordinator(settings: settings)
     private lazy var menuFactory = MenuFactory(settings: settings, actions: self)
 
     private var tempUnit: String { settings.tempUnit }
@@ -84,37 +83,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private func updateStats() {
         // Skip all SMC work when no temperature consumer is active.
         let needsTemp = settings.showCPUTemperature
-            || settings.tempAlertThreshold > 0
             || settings.sparklineMetric == .temp
             || menuFactory.hasLiveMenu
 
         currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
         currentMemStats = statsEngine.fetchMemoryStats()
 
-        appendHistory()
         renderCurrentStats()
-        alertCoordinator.checkAlerts(
-            cpu: currentCpuStats.usagePercent,
-            memory: currentMemStats.usedPercent,
-            temperature: currentCpuStats.temperature,
-            tempUnit: tempUnit
-        )
-    }
-
-    private func appendHistory() {
-        append(currentCpuStats.usagePercent, to: &cpuHistory)
-        append(currentMemStats.usedPercent, to: &ramHistory)
-        if currentCpuStats.temperature > 0 {
-            append(currentCpuStats.temperature, to: &tempHistory)
-        }
-    }
-
-    /// Appends one sample to a ring buffer capped at `historyCapacity`.
-    private func append(_ value: Double, to buffer: inout [Double]) {
-        buffer.append(value)
-        if buffer.count > historyCapacity {
-            buffer.removeFirst(buffer.count - historyCapacity)
-        }
     }
 
     private func renderCurrentStats() {
@@ -223,39 +198,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         guard let raw = sender.representedObject as? String,
               let metric = SparklineMetric(rawValue: raw) else { return }
         settings.sparklineMetric = metric
-    }
-
-    @objc func changeCpuAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.cpuAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.cpuAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
-    }
-
-    @objc func changeRamAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.ramAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.ramAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
-    }
-
-    @objc func changeTempAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.tempAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.tempAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
     }
 
     @objc func openGitHubPage() {

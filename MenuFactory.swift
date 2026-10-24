@@ -5,8 +5,8 @@ import AppKit
 // opens, and refreshes live rows while a menu is open. Decoupled from
 // AppDelegate through the MenuActions protocol; never touches StatsEngine.
 
-/// Actions the dropdown and quick-settings menus dispatch back to the app
-/// controller. Implemented by AppDelegate.
+/// Actions the settings menu dispatches back to the app controller.
+/// Implemented by AppDelegate.
 @objc protocol MenuActions: NSObjectProtocol {
     func openActivityMonitor()
     func openGitHubPage()
@@ -15,9 +15,6 @@ import AppKit
     func toggleLaunchAtLogin(_ sender: NSMenuItem)
     func changeInterval(_ sender: NSMenuItem)
     func changeTempUnit(_ sender: NSMenuItem)
-    func changeCpuAlert(_ sender: NSMenuItem)
-    func changeRamAlert(_ sender: NSMenuItem)
-    func changeTempAlert(_ sender: NSMenuItem)
     func changeSparklineMetric(_ sender: NSMenuItem)
 }
 
@@ -44,9 +41,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
     private var cachedGitHubItem: NSMenuItem?
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
-    private var cachedCpuAlertSubmenu: NSMenu?
-    private var cachedRamAlertSubmenu: NSMenu?
-    private var cachedTempAlertSubmenu: NSMenu?
     private var cachedSparklineSubmenu: NSMenu?
 
     // Live rows: updaters run on each tick while the menu is open.
@@ -124,24 +118,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
         tempUnitItem.submenu = tempUnitSubmenu
         cachedTempUnitSubmenu = tempUnitSubmenu
 
-        let cpuAlert = makeAlertSubmenu(
-            title: "CPU Alerts",
-            levels: [("Off", 0.0), ("60%", 60.0), ("70%", 70.0), ("80%", 80.0), ("90%", 90.0), ("95%", 95.0)],
-            action: #selector(MenuActions.changeCpuAlert(_:)))
-        cachedCpuAlertSubmenu = cpuAlert.submenu
-
-        let ramAlert = makeAlertSubmenu(
-            title: "RAM Alerts",
-            levels: [("Off", 0.0), ("70%", 70.0), ("80%", 80.0), ("85%", 85.0), ("90%", 90.0), ("95%", 95.0)],
-            action: #selector(MenuActions.changeRamAlert(_:)))
-        cachedRamAlertSubmenu = ramAlert.submenu
-
-        let tempAlert = makeAlertSubmenu(
-            title: "Temperature Alerts",
-            levels: [("Off", 0.0), ("70°C", 70.0), ("80°C", 80.0), ("90°C", 90.0), ("100°C", 100.0)],
-            action: #selector(MenuActions.changeTempAlert(_:)))
-        cachedTempAlertSubmenu = tempAlert.submenu
-
         let sparklineSubmenu = NSMenu()
         let sparklineOptions: [(String, SparklineMetric)] = [
             ("Off", .off), ("CPU", .cpu), ("RAM", .ram), ("Temperature", .temp)
@@ -157,22 +133,7 @@ final class MenuFactory: NSObject, NSMenuDelegate {
         cachedSparklineSubmenu = sparklineSubmenu
 
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem,
-                                     cpuAlert.parent, ramAlert.parent, tempAlert.parent, sparklineItem]
-    }
-
-    /// Builds a submenu of alert threshold choices. A level of `0.0` means off.
-    private func makeAlertSubmenu(title: String, levels: [(String, Double)], action: Selector) -> (parent: NSMenuItem, submenu: NSMenu) {
-        let submenu = NSMenu()
-        for (label, level) in levels {
-            let item = NSMenuItem(title: label, action: action, keyEquivalent: "")
-            item.target = actions
-            item.representedObject = level
-            submenu.addItem(item)
-        }
-        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        parent.submenu = submenu
-        return (parent, submenu)
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem, sparklineItem]
     }
 
     private func buildFooterItems() {
@@ -214,25 +175,12 @@ final class MenuFactory: NSObject, NSMenuDelegate {
             }
         }
 
-        updateAlertSubmenuState(cachedCpuAlertSubmenu, selectedLevel: settings.cpuAlertThreshold)
-        updateAlertSubmenuState(cachedRamAlertSubmenu, selectedLevel: settings.ramAlertThreshold)
-        updateAlertSubmenuState(cachedTempAlertSubmenu, selectedLevel: settings.tempAlertThreshold)
-
         let selectedSparkline = settings.sparklineMetric
         if let submenu = cachedSparklineSubmenu {
             for item in submenu.items {
                 if let raw = item.representedObject as? String {
                     item.state = (selectedSparkline.rawValue == raw) ? .on : .off
                 }
-            }
-        }
-    }
-
-    private func updateAlertSubmenuState(_ submenu: NSMenu?, selectedLevel: Double) {
-        guard let submenu = submenu else { return }
-        for item in submenu.items {
-            if let level = item.representedObject as? Double {
-                item.state = (selectedLevel == level) ? .on : .off
             }
         }
     }

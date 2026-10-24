@@ -25,9 +25,6 @@ public final class AppSettings {
     private var _updateInterval: TimeInterval
     private var _tempUnit: String
     private var _showCPUTemperature: Bool
-    private var _cpuAlertThreshold: Double
-    private var _ramAlertThreshold: Double
-    private var _tempAlertThreshold: Double
     private var _sparklineMetric: SparklineMetric
 
     /// - Parameter defaults: persistence backend; injectable for tests.
@@ -37,9 +34,6 @@ public final class AppSettings {
         self._updateInterval = storedInterval > 0 ? storedInterval : 2.0
         self._tempUnit = defaults.string(forKey: "tempUnit") ?? "C"
         self._showCPUTemperature = defaults.object(forKey: "showCPUTemperature") as? Bool ?? true
-        self._cpuAlertThreshold = defaults.double(forKey: "cpuAlertThreshold")
-        self._ramAlertThreshold = defaults.double(forKey: "ramAlertThreshold")
-        self._tempAlertThreshold = defaults.double(forKey: "tempAlertThreshold")
         self._sparklineMetric = SparklineMetric(rawValue: defaults.string(forKey: "sparklineMetric") ?? "") ?? .off
     }
 
@@ -67,33 +61,6 @@ public final class AppSettings {
         set {
             _showCPUTemperature = newValue
             defaults.set(newValue, forKey: "showCPUTemperature")
-        }
-    }
-
-    /// CPU usage notification threshold in percent; 0 disables the alert.
-    public var cpuAlertThreshold: Double {
-        get { _cpuAlertThreshold }
-        set {
-            _cpuAlertThreshold = newValue
-            defaults.set(newValue, forKey: "cpuAlertThreshold")
-        }
-    }
-
-    /// Memory usage notification threshold in percent; 0 disables the alert.
-    public var ramAlertThreshold: Double {
-        get { _ramAlertThreshold }
-        set {
-            _ramAlertThreshold = newValue
-            defaults.set(newValue, forKey: "ramAlertThreshold")
-        }
-    }
-
-    /// CPU temperature notification threshold in degrees Celsius; 0 disables.
-    public var tempAlertThreshold: Double {
-        get { _tempAlertThreshold }
-        set {
-            _tempAlertThreshold = newValue
-            defaults.set(newValue, forKey: "tempAlertThreshold")
         }
     }
 
