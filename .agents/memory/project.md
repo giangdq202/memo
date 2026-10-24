@@ -2,6 +2,14 @@
 
 ## Architectural Decisions
 
+### 2026-10-24: MVC / Clean Architecture Layering
+- **AppDelegate Split**: The 1048-line god class became a 280-line controller plus five focused files. Dependency rule: Model knows nobody, Controller reads Model and drives View, View renders plain values only.
+- **New Files**: `Formatters.swift` (presentation helpers), `AppSettings.swift` (cached write-through settings store, single owner of all UserDefaults keys except `LaunchAtLogin`), `LoginItemService.swift` (SMAppService + plist fallback), `MenuViews.swift` (row components behind `MenuRowFactory`), `AlertCoordinator.swift` (threshold notifications), `MenuFactory.swift` (menu assembly, static item cache, live-row updaters).
+- **MenuActions Protocol**: `MenuFactory` dispatches item actions through an `@objc protocol MenuActions` implemented by `AppDelegate`, so view assembly never depends on the concrete controller. Selector reference: `#selector(MenuActions.changeInterval(_:))`.
+- **Live Rows Push Model**: The factory stores `latestCpu/latestMem/latestHistories`; the controller pushes fresh values each tick via `refreshLiveRows(cpu:mem:histories:)`. `hasLiveMenu` replaces the old `activeMenuUpdaters` check for the idle SMC skip.
+- **Side Effects Moved Out of Setters**: Settings setters persist only; the action handlers own UI side effects (restart timer, re-render, on-demand SMC sample).
+- **Pure Refactor**: No behavior change intended; SMC.swift, Info.plist, and build flags untouched (build.sh only gained source entries).
+
 ### 2026-10-18: Skip Idle SMC Temperature Polling
 - **Idle SMC Skip**: When `showCPUTemperature` is off and no temp alerts or temp sparkline are active, `StatsEngine.fetchCPUStats(includeTemperature: false)` skips all IOKit reads and 30s `#KEY` rescans, reducing context switches by ~78% and Mach syscalls by ~41%.
 - **Separated Sampling**: `sampleTemperatures(fullSample:)` is decoupled from CPU delta sampling. Opening the dropdown menu on-demand samples temperatures immediately without touching `prevCpuInfo`, eliminating CPU measurement jitter.

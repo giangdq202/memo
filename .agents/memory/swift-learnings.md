@@ -293,3 +293,23 @@
 - Hardware sensor polling (IOKit/SMC) is expensive compared to Mach kernel statistics. Making polling conditional on actual consumer demand (`needsTemp`) prevents battery drain when the metric is not visible.
 - Decoupling on-demand sampling from periodic differential sampling prevents state corruption: `fetchCPUStats` computes deltas over time, so calling it out-of-band to inspect temperature would corrupt `prevCpuInfo` and cause false 0% CPU spikes. Extracting `sampleTemperatures(fullSample:)` avoids this coupling.
 - When re-enabling a display metric, trigger an immediate full sample and render pass so the UI never displays empty or stale placeholders (`--`).
+
+## Session N - 2026-10-24: MVC Refactor
+
+### Concepts Learned
+
+**@objc Protocol as Decoupling Seam**
+- `@objc protocol MenuActions: NSObjectProtocol` lets `MenuFactory` build menu items with `item.action = #selector(MenuActions.changeInterval(_:))` and `item.target = actions` without knowing the concrete controller class.
+- Protocol methods must be at least `internal` (not `private`) for the conforming class.
+
+**Caseless Enum as Namespace**
+- `enum LoginItemService {}` / `enum MenuRowFactory {}` with only static members: a stateless utility type that can never be instantiated.
+
+**lazy var Dependency Wiring**
+- `private lazy var menuFactory = MenuFactory(settings: settings, actions: self)` defers capturing `self` until after init, and shares the `AppSettings.shared` instance.
+
+**Write-Through Cache Pattern**
+- Load UserDefaults once in `init`, keep values in stored properties, persist on every set: reads in hot paths become memory access with no I/O.
+
+**Value-Type Data Bundles**
+- `struct HistoryBuffers { let cpu, ram, temp: [Double] }` passes multiple arrays through one parameter, making the push API (`refreshLiveRows`) read clearly at the call site.

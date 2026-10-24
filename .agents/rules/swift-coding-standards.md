@@ -18,16 +18,23 @@ trigger: always_on
 
 ## 2. UserDefaults Pattern
 
-Always use computed property with get/set:
+All persisted preferences live in `AppSettings.swift` (and `LaunchAtLogin` in
+`LoginItemService.swift`). Each setting is a stored property loaded once in
+`init` and written through on set, so hot paths never hit UserDefaults:
 
 ```swift
-private var cpuWarnThreshold: Double {
-    get { UserDefaults.standard.object(forKey: "cpuWarnThreshold") as? Double ?? 50.0 }
-    set { UserDefaults.standard.set(newValue, forKey: "cpuWarnThreshold") }
+public var tempUnit: String {
+    get { _tempUnit }
+    set {
+        _tempUnit = newValue
+        defaults.set(newValue, forKey: "tempUnit")
+    }
 }
 ```
 
-* Every new UserDefaults key must be documented in the `AGENTS.md` Key Files Reference table.
+* Never read `UserDefaults` from `draw()`, timer callbacks, or menu update paths.
+* UI side effects belong to the caller (action handler), not the setter.
+* Every new UserDefaults key must be documented in the `AGENTS.md` list.
 * Default values must be conservative (warn=50%, critical=80%).
 * To remove a key: `UserDefaults.standard.removeObject(forKey:)`.
 
