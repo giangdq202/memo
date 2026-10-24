@@ -1,7 +1,6 @@
 import AppKit
-import UserNotifications
 
-public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var statsView: UnifiedStatsView?
     
@@ -24,15 +23,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
 
-    // Alert submenus and cooldown state
+    // Alert submenus (menu items) and the notification coordinator
     private var cachedCpuAlertSubmenu: NSMenu?
     private var cachedRamAlertSubmenu: NSMenu?
     private var cachedTempAlertSubmenu: NSMenu?
-    private let notificationCenter = UNUserNotificationCenter.current()
-    private var lastCpuAlert: CFAbsoluteTime = 0
-    private var lastRamAlert: CFAbsoluteTime = 0
-    private var lastTempAlert: CFAbsoluteTime = 0
-    private let alertCooldown: CFAbsoluteTime = 60.0
+    private lazy var alertCoordinator = AlertCoordinator(settings: settings)
 
     // History buffers for the dropdown sparkline
     private var cpuHistory: [Double] = []
@@ -51,8 +46,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent app from appearing in Dock or Command-Tab switcher
         NSApp.setActivationPolicy(.accessory)
-        notificationCenter.delegate = self
-        
+
         setupStatusItem()
         startTimer()
         updateStats()
@@ -107,7 +101,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         
         appendHistory()
         renderCurrentStats()
-        checkAlerts()
+        alertCoordinator.checkAlerts(
+            cpu: currentCpuStats.usagePercent,
+            memory: currentMemStats.usedPercent,
+            temperature: currentCpuStats.temperature,
+            tempUnit: tempUnit
+        )
     }
     
     private func appendHistory() {
@@ -617,10 +616,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         guard let level = sender.representedObject as? Double else { return }
         settings.cpuAlertThreshold = level
         if level > 0 {
-            requestNotificationPermission { [weak self] in
+            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.cpuAlertThreshold = 0
                 self?.updateStaticMenuStates()
-            }
+            })
         }
     }
 
@@ -628,10 +627,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         guard let level = sender.representedObject as? Double else { return }
         settings.ramAlertThreshold = level
         if level > 0 {
-            requestNotificationPermission { [weak self] in
+            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.ramAlertThreshold = 0
                 self?.updateStaticMenuStates()
-            }
+            })
         }
     }
 
@@ -639,64 +638,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         guard let level = sender.representedObject as? Double else { return }
         settings.tempAlertThreshold = level
         if level > 0 {
-            requestNotificationPermission { [weak self] in
+            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.tempAlertThreshold = 0
                 self?.updateStaticMenuStates()
-            }
+            })
         }
     }
 
-    private func checkAlerts() {
-        let now = CFAbsoluteTimeGetCurrent()
-
-        let cpu = currentCpuStats.usagePercent
-        let cpuThreshold = cpuAlertThreshold
-        if cpuThreshold > 0 && cpu >= cpuThreshold && now - lastCpuAlert >= alertCooldown {
-            lastCpuAlert = now
-            postAlert(title: "High CPU Usage",
-                      body: "CPU is at \(String(format: "%.0f", cpu))% (limit \(String(format: "%.0f", cpuThreshold))%).")
-        }
-
-        let ram = currentMemStats.usedPercent
-        let ramThreshold = ramAlertThreshold
-        if ramThreshold > 0 && ram >= ramThreshold && now - lastRamAlert >= alertCooldown {
-            lastRamAlert = now
-            postAlert(title: "High Memory Usage",
-                      body: "Memory is at \(String(format: "%.0f", ram))% (limit \(String(format: "%.0f", ramThreshold))%).")
-        }
-
-        let temp = currentCpuStats.temperature
-        let tempThreshold = tempAlertThreshold
-        if tempThreshold > 0 && temp > 0 && temp >= tempThreshold && now - lastTempAlert >= alertCooldown {
-            lastTempAlert = now
-            let display = formatTemperature(temp, unit: tempUnit)
-            postAlert(title: "High CPU Temperature",
-                      body: "CPU temperature is \(display) (limit \(String(format: "%.0f", tempThreshold))°C).")
-        }
-    }
-
-    private func postAlert(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        notificationCenter.add(request)
-    }
-
-    private func requestNotificationPermission(onDenied rollback: @escaping () -> Void) {
-        notificationCenter.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard !granted else { return }
-            DispatchQueue.main.async { rollback() }
-        }
-    }
-
-    public func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                       willPresent notification: UNNotification,
-                                       withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
-    }
-    
     @objc private func openGitHubPage() {
         if let url = URL(string: "https://github.com/giangdq202/memo") {
             NSWorkspace.shared.open(url)
