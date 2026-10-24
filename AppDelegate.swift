@@ -1,47 +1,38 @@
 import AppKit
 
-public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+// MARK: - App Controller
+// Owns the model objects (StatsEngine, AppSettings), the status bar view, and
+// the update loop. Builds menus through MenuFactory and receives every menu
+// action through the MenuActions protocol. No row layout or persistence
+// details live here.
+
+public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private var statusItem: NSStatusItem?
     private var statsView: UnifiedStatsView?
-    
+
     private let statsEngine = StatsEngine()
     private var timer: Timer?
-    
+
     private var currentCpuStats = CPUStats()
     private var currentMemStats = MemoryStats()
-    
-    private var activeMenuUpdaters: [() -> Void] = []
 
-    // Static menu items are built once and reused across menu opens.
-    private var cachedVersionItem: NSMenuItem?
-    private var cachedActivityItem: NSMenuItem?
-    private var cachedShowTemperatureItem: NSMenuItem?
-    private var cachedLaunchAtLoginItem: NSMenuItem?
-    private var cachedIntervalSubmenu: NSMenu?
-    private var cachedTempUnitSubmenu: NSMenu?
-    private var cachedGitHubItem: NSMenuItem?
-    private var cachedQuitItem: NSMenuItem?
-    private var cachedSettingsParentItems: [NSMenuItem] = []
-
-    // Alert submenus (menu items) and the notification coordinator
-    private var cachedCpuAlertSubmenu: NSMenu?
-    private var cachedRamAlertSubmenu: NSMenu?
-    private var cachedTempAlertSubmenu: NSMenu?
-    private lazy var alertCoordinator = AlertCoordinator(settings: settings)
-
-    // History buffers for the dropdown sparkline
+    // History ring buffers for the dropdown sparkline
     private var cpuHistory: [Double] = []
     private var ramHistory: [Double] = []
     private var tempHistory: [Double] = []
     private let historyCapacity = 60
-    private var cachedSparklineSubmenu: NSMenu?
 
-    // MARK: - Persisted Settings
+    // MARK: - Wired Dependencies
 
     /// Single source of truth for user preferences (cached, write-through).
     private let settings = AppSettings.shared
+    private lazy var alertCoordinator = AlertCoordinator(settings: settings)
+    private lazy var menuFactory = MenuFactory(settings: settings, actions: self)
 
-    private var updateInterval: TimeInterval { settings.updateInterval }
+    private var tempUnit: String { settings.tempUnit }
+    private var showCPUTemperature: Bool { settings.showCPUTemperature }
+
+    // MARK: - Lifecycle
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent app from appearing in Dock or Command-Tab switcher
@@ -52,34 +43,32 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStats()
     }
 
-
-    
     private func setupStatusItem() {
         let statusBar = NSStatusBar.system
-        
+
         let initialWidth = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
         view.onRightClick = { [weak self] in self?.showQuickSettingsMenu() }
-        
+
         view.showTemperature = showCPUTemperature
-        
+
         statusItem = item
         statsView = view
-        
+
         if let button = item.button {
             button.addSubview(view)
             view.frame = button.bounds
             view.autoresizingMask = [.width, .height]
         }
-        
+
         updateStatusItemWidth()
     }
-    
+
     private func startTimer() {
         timer?.invalidate()
-        let interval = updateInterval
+        let interval = settings.updateInterval
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             autoreleasepool {
                 self?.updateStats()
@@ -89,16 +78,19 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         RunLoop.current.add(t, forMode: .common)
         timer = t
     }
-    
+
+    // MARK: - Update Loop
+
     private func updateStats() {
-        let needsTemp = showCPUTemperature
-            || tempAlertThreshold > 0
-            || sparklineMetric == .temp
-            || !activeMenuUpdaters.isEmpty
+        // Skip all SMC work when no temperature consumer is active.
+        let needsTemp = settings.showCPUTemperature
+            || settings.tempAlertThreshold > 0
+            || settings.sparklineMetric == .temp
+            || menuFactory.hasLiveMenu
 
         currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
         currentMemStats = statsEngine.fetchMemoryStats()
-        
+
         appendHistory()
         renderCurrentStats()
         alertCoordinator.checkAlerts(
@@ -108,7 +100,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             tempUnit: tempUnit
         )
     }
-    
+
     private func appendHistory() {
         append(currentCpuStats.usagePercent, to: &cpuHistory)
         append(currentMemStats.usedPercent, to: &ramHistory)
@@ -117,13 +109,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Appends one sample to a ring buffer capped at `historyCapacity`.
     private func append(_ value: Double, to buffer: inout [Double]) {
         buffer.append(value)
         if buffer.count > historyCapacity {
             buffer.removeFirst(buffer.count - historyCapacity)
         }
     }
-    
+
     private func renderCurrentStats() {
         statsView?.updateValues(
             cpuPercent: currentCpuStats.usagePercent,
@@ -133,427 +126,51 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             memPercent: currentMemStats.usedPercent,
             pressureLevel: currentMemStats.pressureLevel
         )
-        
-        for updater in activeMenuUpdaters {
-            updater()
-        }
-    }
-    
-    private func buildAboutItem() {
-        let versionStr = BUILD_VERSION
-        let item = NSMenuItem(title: "MeMo v\(versionStr)", action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: "MeMo v\(versionStr)", attributes: [
-            .foregroundColor: NSColor.tertiaryLabelColor,
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        ])
-        cachedVersionItem = item
+
+        menuFactory.refreshLiveRows(
+            cpu: currentCpuStats,
+            mem: currentMemStats,
+            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
+        )
     }
 
-    private func buildActivityItem() {
-        let item = NSMenuItem(title: "Open Activity Monitor", action: #selector(openActivityMonitor), keyEquivalent: "")
-        item.target = self
-        cachedActivityItem = item
-    }
-
-    private func buildSettingsItems() {
-        let showTempItem = NSMenuItem(title: "Show CPU Temperature", action: #selector(toggleShowTemperature(_:)), keyEquivalent: "")
-        showTempItem.target = self
-        cachedShowTemperatureItem = showTempItem
-
-        let autoStartItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
-        autoStartItem.target = self
-        cachedLaunchAtLoginItem = autoStartItem
-
-        let intervalSubmenu = NSMenu()
-        let intervals: [(String, TimeInterval)] = [
-            ("Ultra Fast (250 ms)", 0.25),
-            ("Fast (500 ms)", 0.5),
-            ("Normal (1 s)", 1.0),
-            ("Slow (2 s)", 2.0),
-            ("Very Slow (5 s)", 5.0)
-        ]
-        for (label, sec) in intervals {
-            let item = NSMenuItem(title: label, action: #selector(changeInterval(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = sec
-            intervalSubmenu.addItem(item)
-        }
-        let refreshItem = NSMenuItem(title: "Update Interval", action: nil, keyEquivalent: "")
-        refreshItem.submenu = intervalSubmenu
-        cachedIntervalSubmenu = intervalSubmenu
-
-        let tempUnitSubmenu = NSMenu()
-        for (label, key) in [("Celsius (°C)", "C"), ("Fahrenheit (°F)", "F")] {
-            let item = NSMenuItem(title: label, action: #selector(changeTempUnit(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = key
-            tempUnitSubmenu.addItem(item)
-        }
-        let tempUnitItem = NSMenuItem(title: "Temperature Unit", action: nil, keyEquivalent: "")
-        tempUnitItem.submenu = tempUnitSubmenu
-        cachedTempUnitSubmenu = tempUnitSubmenu
-
-        let cpuAlert = makeAlertSubmenu(
-            title: "CPU Alerts",
-            levels: [("Off", 0.0), ("60%", 60.0), ("70%", 70.0), ("80%", 80.0), ("90%", 90.0), ("95%", 95.0)],
-            action: #selector(changeCpuAlert(_:)))
-        cachedCpuAlertSubmenu = cpuAlert.submenu
-
-        let ramAlert = makeAlertSubmenu(
-            title: "RAM Alerts",
-            levels: [("Off", 0.0), ("70%", 70.0), ("80%", 80.0), ("85%", 85.0), ("90%", 90.0), ("95%", 95.0)],
-            action: #selector(changeRamAlert(_:)))
-        cachedRamAlertSubmenu = ramAlert.submenu
-
-        let tempAlert = makeAlertSubmenu(
-            title: "Temperature Alerts",
-            levels: [("Off", 0.0), ("70°C", 70.0), ("80°C", 80.0), ("90°C", 90.0), ("100°C", 100.0)],
-            action: #selector(changeTempAlert(_:)))
-        cachedTempAlertSubmenu = tempAlert.submenu
-
-        let sparklineSubmenu = NSMenu()
-        let sparklineOptions: [(String, SparklineMetric)] = [
-            ("Off", .off), ("CPU", .cpu), ("RAM", .ram), ("Temperature", .temp)
-        ]
-        for (label, metric) in sparklineOptions {
-            let item = NSMenuItem(title: label, action: #selector(changeSparklineMetric(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = metric.rawValue
-            sparklineSubmenu.addItem(item)
-        }
-        let sparklineItem = NSMenuItem(title: "History Graph", action: nil, keyEquivalent: "")
-        sparklineItem.submenu = sparklineSubmenu
-        cachedSparklineSubmenu = sparklineSubmenu
-
-        // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem,
-                                     cpuAlert.parent, ramAlert.parent, tempAlert.parent, sparklineItem]
-    }
-
-    /// Builds a submenu of alert threshold choices. A level of `0.0` means off.
-    private func makeAlertSubmenu(title: String, levels: [(String, Double)], action: Selector) -> (parent: NSMenuItem, submenu: NSMenu) {
-        let submenu = NSMenu()
-        for (label, level) in levels {
-            let item = NSMenuItem(title: label, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = level
-            submenu.addItem(item)
-        }
-        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        parent.submenu = submenu
-        return (parent, submenu)
-    }
-
-    private func buildFooterItems() {
-        let githubItem = NSMenuItem(title: "GitHub Repository", action: #selector(openGitHubPage), keyEquivalent: "")
-        githubItem.target = self
-        cachedGitHubItem = githubItem
-
-        let quitItem = NSMenuItem(title: "Quit MeMo", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        cachedQuitItem = quitItem
-    }
-
-    private func buildStaticMenuItems() {
-        guard cachedVersionItem == nil else { return }
-        buildAboutItem()
-        buildActivityItem()
-        buildSettingsItems()
-        buildFooterItems()
-    }
-
-    private func updateStaticMenuStates() {
-        cachedShowTemperatureItem?.state = showCPUTemperature ? .on : .off
-        cachedLaunchAtLoginItem?.state = isLaunchAtLoginEnabled ? .on : .off
-
-        if let submenu = cachedIntervalSubmenu {
-            for item in submenu.items {
-                if let sec = item.representedObject as? TimeInterval {
-                    item.state = (updateInterval == sec) ? .on : .off
-                }
-            }
-        }
-        if let submenu = cachedTempUnitSubmenu {
-            for item in submenu.items {
-                if let key = item.representedObject as? String {
-                    item.state = (tempUnit == key) ? .on : .off
-                }
-            }
-        }
-
-        updateAlertSubmenuState(cachedCpuAlertSubmenu, selectedLevel: cpuAlertThreshold)
-        updateAlertSubmenuState(cachedRamAlertSubmenu, selectedLevel: ramAlertThreshold)
-        updateAlertSubmenuState(cachedTempAlertSubmenu, selectedLevel: tempAlertThreshold)
-
-        let selectedSparkline = sparklineMetric
-        if let submenu = cachedSparklineSubmenu {
-            for item in submenu.items {
-                if let raw = item.representedObject as? String {
-                    item.state = (selectedSparkline.rawValue == raw) ? .on : .off
-                }
-            }
-        }
-    }
-
-    private func updateAlertSubmenuState(_ submenu: NSMenu?, selectedLevel: Double) {
-        guard let submenu = submenu else { return }
-        for item in submenu.items {
-            if let level = item.representedObject as? Double {
-                item.state = (selectedLevel == level) ? .on : .off
-            }
-        }
-    }
-
-    /// Detaches a cached item from its previous menu (if any) and adds it to the
-    /// new menu. NSMenuItem can only belong to one menu at a time.
-    private func reuse(_ item: NSMenuItem?, in menu: NSMenu) {
-        guard let item = item else { return }
-        item.menu?.removeItem(item)
-        menu.addItem(item)
-    }
+    // MARK: - Menu Presentation
 
     private func showMenu() {
         guard let statusItem = statusItem else { return }
-        buildStaticMenuItems()
-        updateStaticMenuStates()
 
+        // The dropdown shows temperature clusters even when the menu bar
+        // column is off; sample them on demand if the ticks have not yet.
         if currentCpuStats.tempClusters.isEmpty {
             let temp = statsEngine.sampleTemperatures(fullSample: true)
             currentCpuStats.temperature = temp.temperature
             currentCpuStats.tempClusters = temp.clusters
         }
 
-        let menu = NSMenu()
-        menu.autoenablesItems = false
+        let menu = menuFactory.buildDropdownMenu(
+            cpu: currentCpuStats,
+            mem: currentMemStats,
+            top: statsEngine.fetchTopProcesses(limit: 3),
+            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
+        )
 
-        // --- About Header ---
-        reuse(cachedVersionItem, in: menu)
-        menu.addItem(NSMenuItem.separator())
-
-        var customViews: [(item: NSMenuItem, builder: (CGFloat) -> (NSView, () -> Void))] = []
-
-        // --- System Summary Section ---
-        let cpuItem = NSMenuItem(title: "CPU              100%", action: nil, keyEquivalent: "")
-        cpuItem.isEnabled = false
-        menu.addItem(cpuItem)
-        customViews.append((cpuItem, { [weak self] width in 
-            guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "CPU", percent: self.currentCpuStats.usagePercent, valueText: formatCPU(self.currentCpuStats.usagePercent), prefix: "cpu", width: width)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let pct = self.currentCpuStats.usagePercent
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                updateBlock(pct, formatCPU(pct), colorForUsage(pct, isDark: isDark, metricPrefix: "cpu"))
-            }
-            return (view, updater)
-        }))
-
-        let ramItem = NSMenuItem(title: "RAM              32.0/32.0 GB", action: nil, keyEquivalent: "")
-        ramItem.isEnabled = false
-        menu.addItem(ramItem)
-        customViews.append((ramItem, { [weak self] width in 
-            guard let self = self else { return (NSView(), {}) }
-            let valStr = String(format: "%.1f/%.0f GB", self.currentMemStats.usedGB, self.currentMemStats.totalGB)
-            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "RAM", percent: self.currentMemStats.usedPercent, valueText: valStr, prefix: "mem", width: width, pressureLevel: self.currentMemStats.pressureLevel)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let pct = self.currentMemStats.usedPercent
-                let pressure = self.currentMemStats.pressureLevel
-                let newStr = String(format: "%.1f/%.0f GB", self.currentMemStats.usedGB, self.currentMemStats.totalGB)
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                updateBlock(pct, newStr, colorForUsage(pct, isDark: isDark, metricPrefix: "mem", pressureLevel: pressure))
-            }
-            return (view, updater)
-        }))
-
-        let tempItem = NSMenuItem(title: "Temp              100°C", action: nil, keyEquivalent: "")
-        tempItem.isEnabled = false
-        menu.addItem(tempItem)
-        customViews.append((tempItem, { [weak self] width in 
-            guard let self = self else { return (NSView(), {}) }
-            let t = self.currentCpuStats.temperature
-            let valStr = formatTemperature(t, unit: self.tempUnit)
-            let (view, updateBlock) = MenuRowFactory.inlineRow(label: "Temp", valueText: valStr, isTemp: true, tempVal: t, width: width)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let tNew = self.currentCpuStats.temperature
-                let newStr = formatTemperature(tNew, unit: self.tempUnit)
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                let color = (tNew > 0) ? colorForTemperature(tNew, isDark: isDark) : .secondaryLabelColor
-                updateBlock(newStr, color)
-            }
-            return (view, updater)
-        }))
-        menu.addItem(NSMenuItem.separator())
-
-        // --- Temperatures Section ---
-        if !self.currentCpuStats.tempClusters.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Temperatures"))
-            for cluster in self.currentCpuStats.tempClusters {
-                let item = NSMenuItem(title: "\(cluster.name)    \(String(format: "%.0f°C", cluster.temperature))", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-                menu.addItem(item)
-                
-                customViews.append((item, { [weak self] width in
-                    guard let self = self else { return (NSView(), {}) }
-                    let t = cluster.temperature
-                    let valStr = formatTemperature(t, unit: self.tempUnit)
-                    
-                    let (view, updateBlock) = MenuRowFactory.tempClusterRow(name: cluster.name, valueText: valStr, tempVal: t, width: width)
-                    let updater = { [weak self, weak view] in
-                        guard let self = self, let view = view else { return }
-                        // Find this cluster's updated temperature
-                        let newT = self.currentCpuStats.tempClusters.first(where: { $0.name == cluster.name })?.temperature ?? 0.0
-                        let newStr = formatTemperature(newT, unit: self.tempUnit)
-                        let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                        let color = (newT > 0) ? colorForTemperature(newT, isDark: isDark) : .secondaryLabelColor
-                        updateBlock(newStr, color)
-                    }
-                    return (view, updater)
-                }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // --- History Section ---
-        let sparkline = sparklineMetric
-        if sparkline != .off {
-            menu.addItem(MenuRowFactory.sectionHeader("History"))
-            let historyItem = NSMenuItem(title: "History", action: nil, keyEquivalent: "")
-            historyItem.isEnabled = false
-            menu.addItem(historyItem)
-            customViews.append((historyItem, { [weak self] width in
-                guard let self = self else { return (NSView(), {}) }
-                let view = SparklineView(frame: NSRect(x: 0, y: 0, width: width, height: 40))
-                let values = self.historyValues(for: sparkline)
-                view.values = values
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                view.lineColor = self.sparklineColor(for: sparkline, value: values.last ?? 0.0, isDark: isDark)
-                let updater = { [weak self, weak view] in
-                    guard let self = self, let view = view else { return }
-                    let newValues = self.historyValues(for: sparkline)
-                    view.values = newValues
-                    let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    view.lineColor = self.sparklineColor(for: sparkline, value: newValues.last ?? 0.0, isDark: dark)
-                    view.needsDisplay = true
-                }
-                return (view, updater)
-            }))
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // --- Top Processes Section ---
-        // Fetched fresh on open; excludes system daemons and rolls helpers into their app.
-        // Rows start as plain items so the menu can compute its natural width; below
-        // we swap in width-filling views that right-align the value flush to that width.
-        let top = statsEngine.fetchTopProcesses(limit: 3)
-        if !top.byCPU.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Top CPU"))
-            for p in top.byCPU {
-                let value = formatCPU(p.cpuPercent)
-                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
-                menu.addItem(item)
-                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-        if !top.byMemory.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Top Memory"))
-            for p in top.byMemory {
-                let value = formatMemory(p.memoryBytes)
-                let item = MenuRowFactory.provisionalUsageItem(name: p.name, value: value)
-                menu.addItem(item)
-                customViews.append((item, { w in (MenuRowFactory.usageRowView(name: p.name, value: value, width: w), {}) }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // Jump to Activity Monitor for the full, detailed breakdown.
-        reuse(cachedActivityItem, in: menu)
-        menu.addItem(NSMenuItem.separator())
-
-        // --- Settings Section ---
-        for item in cachedSettingsParentItems {
-            reuse(item, in: menu)
-        }
-        menu.addItem(NSMenuItem.separator())
-
-        // GitHub Link
-        reuse(cachedGitHubItem, in: menu)
-        menu.addItem(NSMenuItem.separator())
-
-        // Quit
-        reuse(cachedQuitItem, in: menu)
-        
-        // Now that every item is present, the menu's width is final. Replace each
-        // provisional item with a custom view that fills that width.
-        activeMenuUpdaters.removeAll()
-        if !customViews.isEmpty {
-            let width = menu.size.width
-            for cv in customViews {
-                cv.item.title = ""
-                let (view, updater) = cv.builder(width)
-                cv.item.view = view
-                activeMenuUpdaters.append(updater)
-            }
-        }
-
-        menu.delegate = self
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
     }
 
-    /// Right-click opens a compact settings-only menu that reuses the cached
-    /// settings items and the Quit item.
+    /// Right-click opens a compact settings-only menu.
     private func showQuickSettingsMenu() {
         guard let statusItem = statusItem else { return }
-        buildStaticMenuItems()
-        updateStaticMenuStates()
-
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for item in cachedSettingsParentItems {
-            reuse(item, in: menu)
-        }
-        menu.addItem(NSMenuItem.separator())
-        reuse(cachedQuitItem, in: menu)
-
-        menu.delegate = self
+        let menu = menuFactory.buildQuickSettingsMenu()
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
     }
 
-    public func menuDidClose(_ menu: NSMenu) {
-        activeMenuUpdaters.removeAll()
-    }
-    
-    private var isLaunchAtLoginEnabled: Bool { LoginItemService.isEnabled }
-
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
-        let enable = !isLaunchAtLoginEnabled
-        LoginItemService.setEnabled(enable)
-        sender.state = enable ? .on : .off
-    }
-
-    @objc private func changeInterval(_ sender: NSMenuItem) {
-        if let sec = sender.representedObject as? TimeInterval {
-            settings.updateInterval = sec
-            startTimer()
-        }
-    }
-
-    private var tempUnit: String { settings.tempUnit }
-    
-    private var showCPUTemperature: Bool { settings.showCPUTemperature }
-
-    @objc private func toggleShowTemperature(_ sender: NSMenuItem) {
-        settings.showCPUTemperature.toggle()
-        updateUIForSettingsChange()
-    }
-    
+    /// Re-renders after a display-affecting setting changed (e.g. the
+    /// temperature column toggled), sampling sensors on demand so the value
+    /// appears immediately instead of showing a transient "--".
     private func updateUIForSettingsChange() {
         if showCPUTemperature && currentCpuStats.temperature <= 0 {
             let temp = statsEngine.sampleTemperatures(fullSample: true)
@@ -572,86 +189,82 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.length = width
         statsView.frame.size.width = width
     }
-    
-    @objc private func changeTempUnit(_ sender: NSMenuItem) {
+
+    // MARK: - Menu Actions (MenuActions)
+
+    private var isLaunchAtLoginEnabled: Bool { LoginItemService.isEnabled }
+
+    @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        let enable = !isLaunchAtLoginEnabled
+        LoginItemService.setEnabled(enable)
+        sender.state = enable ? .on : .off
+    }
+
+    @objc func changeInterval(_ sender: NSMenuItem) {
+        if let sec = sender.representedObject as? TimeInterval {
+            settings.updateInterval = sec
+            startTimer()
+        }
+    }
+
+    @objc func toggleShowTemperature(_ sender: NSMenuItem) {
+        settings.showCPUTemperature.toggle()
+        updateUIForSettingsChange()
+    }
+
+    @objc func changeTempUnit(_ sender: NSMenuItem) {
         if let unit = sender.representedObject as? String {
             settings.tempUnit = unit
             renderCurrentStats()
         }
     }
 
-    // MARK: - Alert Settings
-
-    private var cpuAlertThreshold: Double { settings.cpuAlertThreshold }
-    private var ramAlertThreshold: Double { settings.ramAlertThreshold }
-    private var tempAlertThreshold: Double { settings.tempAlertThreshold }
-
-    private var sparklineMetric: SparklineMetric { settings.sparklineMetric }
-
-    private func historyValues(for metric: SparklineMetric) -> [Double] {
-        switch metric {
-        case .cpu: return cpuHistory
-        case .ram: return ramHistory
-        case .temp: return tempHistory
-        case .off: return []
-        }
-    }
-
-    private func sparklineColor(for metric: SparklineMetric, value: Double, isDark: Bool) -> NSColor {
-        switch metric {
-        case .cpu: return colorForUsage(value, isDark: isDark, metricPrefix: "cpu")
-        case .ram: return colorForUsage(value, isDark: isDark, metricPrefix: "mem")
-        case .temp: return colorForTemperature(value, isDark: isDark)
-        case .off: return .secondaryLabelColor
-        }
-    }
-
-    @objc private func changeSparklineMetric(_ sender: NSMenuItem) {
+    @objc func changeSparklineMetric(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let metric = SparklineMetric(rawValue: raw) else { return }
         settings.sparklineMetric = metric
     }
 
-    @objc private func changeCpuAlert(_ sender: NSMenuItem) {
+    @objc func changeCpuAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         settings.cpuAlertThreshold = level
         if level > 0 {
             alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.cpuAlertThreshold = 0
-                self?.updateStaticMenuStates()
+                self?.menuFactory.refreshSettingsStates()
             })
         }
     }
 
-    @objc private func changeRamAlert(_ sender: NSMenuItem) {
+    @objc func changeRamAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         settings.ramAlertThreshold = level
         if level > 0 {
             alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.ramAlertThreshold = 0
-                self?.updateStaticMenuStates()
+                self?.menuFactory.refreshSettingsStates()
             })
         }
     }
 
-    @objc private func changeTempAlert(_ sender: NSMenuItem) {
+    @objc func changeTempAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
         settings.tempAlertThreshold = level
         if level > 0 {
             alertCoordinator.requestAuthorization(onDenied: { [weak self] in
                 self?.settings.tempAlertThreshold = 0
-                self?.updateStaticMenuStates()
+                self?.menuFactory.refreshSettingsStates()
             })
         }
     }
 
-    @objc private func openGitHubPage() {
+    @objc func openGitHubPage() {
         if let url = URL(string: "https://github.com/giangdq202/memo") {
             NSWorkspace.shared.open(url)
         }
     }
 
-    @objc private func openActivityMonitor() {
+    @objc func openActivityMonitor() {
         let workspace = NSWorkspace.shared
         if let url = workspace.urlForApplication(withBundleIdentifier: "com.apple.ActivityMonitor") {
             workspace.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
@@ -661,8 +274,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func quitApp() {
+    @objc func quitApp() {
         NSApplication.shared.terminate(nil)
     }
-
 }
