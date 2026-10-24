@@ -31,9 +31,11 @@ private let cpuMemWidth: CGFloat = 38.0
 private let temperatureSectionWidth: CGFloat = 21.0
 
 // Single-line layout: fixed section widths measured once from the widest
-// possible content, so digit-count changes never shift the item.
-private let singleValFont = NSFont.monospacedDigitSystemFont(ofSize: 10.0, weight: .bold)
-private let singleUnitFont = NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
+// possible content, so digit-count changes never shift the item. Values use
+// the large font; unit suffixes (%, G, °C) render smaller and dimmer so the
+// numbers read first.
+private let singleValFont = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weight: .bold)
+private let singleUnitFont = NSFont.monospacedDigitSystemFont(ofSize: 9.0, weight: .bold)
 private let singleSectionGap: CGFloat = 5.0
 
 /// Measures the render width of `text` and adds a pixel of headroom.
@@ -123,7 +125,12 @@ public class UnifiedStatsView: BaseStatsView {
         if _memGB != dispMemGB { _memGB = dispMemGB; changed = true }
         if _memPercent != dispMemPct { _memPercent = dispMemPct; changed = true }
         if _pressureLevel != pressureLevel { _pressureLevel = pressureLevel; changed = true }
-        if changed { needsDisplay = true }
+        if changed {
+            // One sentence for VoiceOver; allocated only when a value changed.
+            let tempText = dispTemp > 0 ? formatTemperatureValue(dispTemp, unit: tempUnit) + "°" + tempUnit : "unavailable"
+            setAccessibilityLabel("CPU \(Int(dispCpu)) percent, memory \(String(format: "%.1f", dispMemGB)) gigabytes, temperature \(tempText)")
+            needsDisplay = true
+        }
     }
 
     private func buildLine(val: String, unit: String, color: NSColor, dimAlpha: CGFloat,
@@ -171,9 +178,14 @@ public class UnifiedStatsView: BaseStatsView {
         if cachedSingleCpuLine == nil || _cpuPercent != lastCpuPct {
             lastCpuPct = _cpuPercent
             let s = NSMutableAttributedString()
-            s.append(NSAttributedString(string: String(format: "%.0f%%", _cpuPercent), attributes: [
+            s.append(NSAttributedString(string: String(format: "%.0f", _cpuPercent), attributes: [
                 .font: singleValFont,
                 .foregroundColor: colorForUsage(_cpuPercent, isDark: isDark, metricPrefix: "cpu"),
+                .paragraphStyle: rightAlignStyle
+            ]))
+            s.append(NSAttributedString(string: "%", attributes: [
+                .font: singleUnitFont,
+                .foregroundColor: colorForUsage(_cpuPercent, isDark: isDark, metricPrefix: "cpu").withAlphaComponent(dimAlpha),
                 .paragraphStyle: rightAlignStyle
             ]))
             cachedSingleCpuLine = s
@@ -185,10 +197,16 @@ public class UnifiedStatsView: BaseStatsView {
             lastMemGB = _memGB
             lastMemPct = _memPercent
             lastPressure = _pressureLevel
+            let memColor = colorForUsage(_memPercent, isDark: isDark, metricPrefix: "mem", pressureLevel: _pressureLevel)
             let s = NSMutableAttributedString()
-            s.append(NSAttributedString(string: String(format: "%.1fG", _memGB), attributes: [
+            s.append(NSAttributedString(string: String(format: "%.1f", _memGB), attributes: [
                 .font: singleValFont,
-                .foregroundColor: colorForUsage(_memPercent, isDark: isDark, metricPrefix: "mem", pressureLevel: _pressureLevel),
+                .foregroundColor: memColor,
+                .paragraphStyle: rightAlignStyle
+            ]))
+            s.append(NSAttributedString(string: "G", attributes: [
+                .font: singleUnitFont,
+                .foregroundColor: memColor.withAlphaComponent(dimAlpha),
                 .paragraphStyle: rightAlignStyle
             ]))
             cachedSingleRamLine = s
