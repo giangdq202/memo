@@ -42,17 +42,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     private let historyCapacity = 60
     private var cachedSparklineSubmenu: NSMenu?
 
-    // MARK: - Persisted Settings Helpers
+    // MARK: - Persisted Settings
 
-    private var updateInterval: TimeInterval {
-        get {
-            let val = UserDefaults.standard.double(forKey: "updateInterval")
-            return val > 0 ? val : 2.0
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "updateInterval")
-        }
-    }
+    /// Single source of truth for user preferences (cached, write-through).
+    private let settings = AppSettings.shared
+
+    private var updateInterval: TimeInterval { settings.updateInterval }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent app from appearing in Dock or Command-Tab switcher
@@ -654,28 +649,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     
     @objc private func changeInterval(_ sender: NSMenuItem) {
         if let sec = sender.representedObject as? TimeInterval {
-            updateInterval = sec
+            settings.updateInterval = sec
             startTimer()
         }
     }
+
+    private var tempUnit: String { settings.tempUnit }
     
-    private var tempUnit: String {
-        get {
-            return UserDefaults.standard.string(forKey: "tempUnit") ?? "C"
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "tempUnit")
-            renderCurrentStats()
-        }
-    }
-    
-    private var showCPUTemperature: Bool {
-        get { UserDefaults.standard.object(forKey: "showCPUTemperature") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showCPUTemperature"); updateUIForSettingsChange() }
-    }
-    
+    private var showCPUTemperature: Bool { settings.showCPUTemperature }
+
     @objc private func toggleShowTemperature(_ sender: NSMenuItem) {
-        showCPUTemperature.toggle()
+        settings.showCPUTemperature.toggle()
+        updateUIForSettingsChange()
     }
     
     private func updateUIForSettingsChange() {
@@ -699,34 +684,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     
     @objc private func changeTempUnit(_ sender: NSMenuItem) {
         if let unit = sender.representedObject as? String {
-            tempUnit = unit
+            settings.tempUnit = unit
+            renderCurrentStats()
         }
     }
-    
+
     // MARK: - Alert Settings
 
-    private var cpuAlertThreshold: Double {
-        get { UserDefaults.standard.double(forKey: "cpuAlertThreshold") }
-        set { UserDefaults.standard.set(newValue, forKey: "cpuAlertThreshold") }
-    }
+    private var cpuAlertThreshold: Double { settings.cpuAlertThreshold }
+    private var ramAlertThreshold: Double { settings.ramAlertThreshold }
+    private var tempAlertThreshold: Double { settings.tempAlertThreshold }
 
-    private var ramAlertThreshold: Double {
-        get { UserDefaults.standard.double(forKey: "ramAlertThreshold") }
-        set { UserDefaults.standard.set(newValue, forKey: "ramAlertThreshold") }
-    }
-
-    private var tempAlertThreshold: Double {
-        get { UserDefaults.standard.double(forKey: "tempAlertThreshold") }
-        set { UserDefaults.standard.set(newValue, forKey: "tempAlertThreshold") }
-    }
-
-    private var sparklineMetric: SparklineMetric {
-        get {
-            let raw = UserDefaults.standard.string(forKey: "sparklineMetric") ?? SparklineMetric.off.rawValue
-            return SparklineMetric(rawValue: raw) ?? .off
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: "sparklineMetric") }
-    }
+    private var sparklineMetric: SparklineMetric { settings.sparklineMetric }
 
     private func historyValues(for metric: SparklineMetric) -> [Double] {
         switch metric {
@@ -749,15 +718,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
     @objc private func changeSparklineMetric(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let metric = SparklineMetric(rawValue: raw) else { return }
-        sparklineMetric = metric
+        settings.sparklineMetric = metric
     }
 
     @objc private func changeCpuAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
-        cpuAlertThreshold = level
+        settings.cpuAlertThreshold = level
         if level > 0 {
             requestNotificationPermission { [weak self] in
-                self?.cpuAlertThreshold = 0
+                self?.settings.cpuAlertThreshold = 0
                 self?.updateStaticMenuStates()
             }
         }
@@ -765,10 +734,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
 
     @objc private func changeRamAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
-        ramAlertThreshold = level
+        settings.ramAlertThreshold = level
         if level > 0 {
             requestNotificationPermission { [weak self] in
-                self?.ramAlertThreshold = 0
+                self?.settings.ramAlertThreshold = 0
                 self?.updateStaticMenuStates()
             }
         }
@@ -776,10 +745,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
 
     @objc private func changeTempAlert(_ sender: NSMenuItem) {
         guard let level = sender.representedObject as? Double else { return }
-        tempAlertThreshold = level
+        settings.tempAlertThreshold = level
         if level > 0 {
             requestNotificationPermission { [weak self] in
-                self?.tempAlertThreshold = 0
+                self?.settings.tempAlertThreshold = 0
                 self?.updateStaticMenuStates()
             }
         }

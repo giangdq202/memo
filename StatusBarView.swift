@@ -63,15 +63,8 @@ public class SparklineView: NSView {
     }
 }
 
-/// Selects which metric the history sparkline displays.
-public enum SparklineMetric: String {
-    case off = ""
-    case cpu = "cpu"
-    case ram = "ram"
-    case temp = "temp"
-}
-
-// Formatting and threshold-color helpers live in Formatters.swift.
+// Formatting and threshold-color helpers live in Formatters.swift;
+// SparklineMetric (a persisted setting value) lives in AppSettings.swift.
 
 // MARK: - Static constants (allocated once for app lifetime)
 private let rightAlignStyle: NSParagraphStyle = {
