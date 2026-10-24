@@ -91,9 +91,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             cpuPercent: currentCpuStats.usagePercent,
             cpuTemperature: currentCpuStats.temperature,
             tempUnit: tempUnit,
-            memGB: currentMemStats.usedGB,
-            memPercent: currentMemStats.usedPercent,
-            pressureLevel: currentMemStats.pressureLevel
+            memGB: currentMemStats.usedGB
         )
     }
 

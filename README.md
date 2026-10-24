@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/giangdq202/memo/main/uninstall.sh |
 
 - **Ultra-Lightweight & Blazing Fast**: Written entirely in native Swift, guaranteeing a minimal memory and CPU footprint. No bloated Xcode projects or heavy third-party dependencies.
 - **Menu Bar Display Is the App**:
-  - **Single Line** (default): `12% 8.2G 45°C` on one line — CPU load, RAM usage, and CPU temperature, each colored by its own threshold (Green -> Yellow -> Orange -> Red).
+  - **Single Line** (default): `12% 8.2G 45°C` on one line — CPU load, RAM usage, and CPU temperature, rendered in monochrome system colors (values in label color, units dimmer) so the item blends into the native menu bar.
   - **Two Lines**: the classic stacked layout (CPU over RAM, temperature column on the right) if you prefer a narrower item.
 - **One Menu, Nothing Else**: Left- or right-click opens the same compact settings menu — no dashboard, no process list, no notifications:
   - **Show CPU Temperature**: Toggle the visibility of the CPU temperature column.

@@ -65,7 +65,7 @@ main.swift          entry point, CLI flags, single-instance guard
 AppDelegate.swift   Controller: lifecycle, timer, sampling loop, menu actions
 MenuFactory.swift   Controller-side view assembly: builds the settings menu, caches items
 StatusBarView.swift View: menu bar drawing, single-line and stacked layouts
-Formatters.swift    View: threshold colors and temperature value formatting
+Formatters.swift    View: temperature value formatting (monochrome app - no color helpers)
 AppSettings.swift   Model: cached UserDefaults store (single owner of all keys)
 LoginItemService.swift  Model/service: launch-at-login (SMAppService + plist fallback)
 StatsEngine.swift   Model: CPU / RAM / temperature sampling
@@ -81,7 +81,7 @@ scripts/            smoke-test.sh, policy-check.sh, install-hooks.sh
 * No `as!` / force unwrap on user input or `representedObject`.
 * No allocations in `draw()` or timer callbacks. Every C allocation has a matching free.
 * `[weak self]` in closures. Doc comment on every new function. `// MARK: -` sections.
-* Colors: system or `calibratedHue` with `isDark`; never hardcoded RGB.
+* Colors: monochrome by design - only `labelColor` / `secondaryLabelColor`; never hue-based status colors, never hardcoded RGB. The owner follows minimalism/monochrome.
 * Settings: add the key to `AppSettings.swift` (cached, write-through) and to the list below; conservative default.
 Full text: `.agents/rules/swift-coding-standards.md`.
 

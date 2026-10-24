@@ -4,11 +4,17 @@
 
 - **Purpose**: a personal, minimal menu bar monitor built as a Swift learning vehicle. Not a product; not a feature race.
 - **Why not an existing app**: owner rejects all four — bloat/unnecessary features, UI that does not fit, closed source/privacy, opaque numbers with no way to verify where they come from.
+- **Design identity (2026-10-24, PR #36)**: owner follows minimalism + monochrome. The menu bar item renders ONLY in system `labelColor`/`secondaryLabelColor` like the native clock; the threshold color machinery (calibratedHue palette) was deleted outright. Do not reintroduce hue-based status colors.
 - **Values**: tinkering, portfolio, full control over what runs on the machine.
 - **Scope rule ("đủ dùng là dừng")**: once the feature set is enough, stop. When considering a new feature, it must serve the owner's daily use AND teach something new; otherwise decline.
 - Precedent: network monitoring was removed (2026-10-17) exactly because it exceeded personal need.
 
 ## Architectural Decisions
+
+### 2026-10-24: Monochrome Design
+- **All rendering now system monochrome**: values in `labelColor`, units (%, G, °C) in `secondaryLabelColor`, both layouts (single-line and stacked). Semantic NSColors adapt to Dark/Light automatically.
+- **Deleted the color machinery**: AlertLevel, discreteColor, levelForValue, colorForUsage, colorForTemperature - Formatters.swift is now Foundation-only with just convertedTemperature + formatTemperatureValue.
+- `updateValues` dropped memPercent/pressureLevel (they existed only to pick colors); the RAM token cache now invalidates on GB change alone.
 
 ### 2026-10-24: Single-Line Typography Polish (PR #34)
 - **11pt values** (was 10pt) for legibility on non-Retina displays; unit suffixes (%, G, °C) uniformly smaller + dimmer so numbers read first (previously only °C was dimmed).
