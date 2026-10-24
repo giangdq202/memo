@@ -79,22 +79,6 @@ public class UnifiedStatsView: BaseStatsView {
     private func setupView() {
         self.wantsLayer = true
         self.layerContentsRedrawPolicy = .onSetNeedsDisplay
-        updateToolTipRect()
-    }
-
-    /// Updates the view frame size and refreshes the active tooltip region.
-    /// - Parameter newSize: The new size for the view's frame.
-    override public func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        updateToolTipRect()
-    }
-
-    /// Replaces the registered tooltip rectangle with the current view bounds.
-    private func updateToolTipRect() {
-        removeAllToolTips()
-        if bounds.width > 0 && bounds.height > 0 {
-            _ = addToolTip(bounds, owner: self, userData: nil)
-        }
     }
 
     public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double, memPercent: Double, pressureLevel: Int) {
@@ -197,28 +181,5 @@ public class UnifiedStatsView: BaseStatsView {
             cachedTempLine?.draw(in: CGRect(x: currentX, y: line1Y, width: tempW, height: lineH))
             cachedTempUnitLine?.draw(in: CGRect(x: currentX, y: line2Y, width: tempW, height: lineH))
         }
-    }
-}
-
-// MARK: - On-Demand Tooltip
-extension UnifiedStatsView: NSViewToolTipOwner {
-    /// Generates the menu bar tooltip string lazily when the cursor hovers over the view.
-    /// - Parameters:
-    ///   - view: The view that owns the tooltip.
-    ///   - tag: The tooltip tag identifier.
-    ///   - point: The cursor location inside the view.
-    ///   - data: Optional user data pointer.
-    /// - Returns: A compact status string showing current CPU, RAM, and optional temperature.
-    public func view(_ view: NSView,
-                     stringForToolTip tag: NSView.ToolTipTag,
-                     point: NSPoint,
-                     userData data: UnsafeMutableRawPointer?) -> String {
-        let cpuStr = formatCPU(max(0, _cpuPercent))
-        let memStr = String(format: "%.1f GB", max(0, _memGB))
-        if showTemperature && _cpuTemperature > 0 {
-            let tempStr = formatTemperature(_cpuTemperature, unit: _tempUnit)
-            return "CPU \(cpuStr) | RAM \(memStr) | \(tempStr)"
-        }
-        return "CPU \(cpuStr) | RAM \(memStr)"
     }
 }
