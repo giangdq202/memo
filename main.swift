@@ -5,7 +5,7 @@ public let isDebugMode = CommandLine.arguments.contains("--debug")
 if CommandLine.arguments.contains("--cleanup-login-item") ||
    CommandLine.arguments.contains("--uninstall-login-item") ||
    CommandLine.arguments.contains("--uninstall") {
-    AppDelegate.cleanupLoginItem()
+    LoginItemService.cleanup()
     exit(0)
 }
 

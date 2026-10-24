@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 import UserNotifications
 
 public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
@@ -532,121 +531,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUse
         activeMenuUpdaters.removeAll()
     }
     
-    private var isLaunchAtLoginEnabled: Bool {
-        if #available(macOS 13.0, *) {
-            let status = SMAppService.mainApp.status
-            if status == .enabled { return true }
-        }
-        
-        let plistPath = NSString(string: "~/Library/LaunchAgents/com.giangdq202.memo.plist").expandingTildeInPath
-        if FileManager.default.fileExists(atPath: plistPath) {
-            return true
-        }
-        
-        return UserDefaults.standard.bool(forKey: "LaunchAtLogin")
-    }
-    
+    private var isLaunchAtLoginEnabled: Bool { LoginItemService.isEnabled }
+
     @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         let enable = !isLaunchAtLoginEnabled
-        setLaunchAtLogin(enabled: enable)
+        LoginItemService.setEnabled(enable)
         sender.state = enable ? .on : .off
     }
-    
-    public static func cleanupLoginItem() {
-        if #available(macOS 13.0, *) {
-            do {
-                if SMAppService.mainApp.status == .enabled {
-                    try SMAppService.mainApp.unregister()
-                    print("--> Unregistered SMAppService mainApp login item.")
-                }
-            } catch {
-                print("--> Failed to unregister SMAppService mainApp: \(error)")
-            }
-        }
-        
-        let plistPath = NSString(string: "~/Library/LaunchAgents/com.giangdq202.memo.plist").expandingTildeInPath
-        let uid = getuid()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["bootout", "gui/\(uid)", plistPath]
-        try? process.run()
-        process.waitUntilExit()
-        
-        if FileManager.default.fileExists(atPath: plistPath) {
-            try? FileManager.default.removeItem(atPath: plistPath)
-            print("--> Removed LaunchAgent plist: \(plistPath)")
-        }
-        
-        UserDefaults.standard.removeObject(forKey: "LaunchAtLogin")
-    }
-    
-    private func setLaunchAtLogin(enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "LaunchAtLogin")
-        let plistPath = NSString(string: "~/Library/LaunchAgents/com.giangdq202.memo.plist").expandingTildeInPath
-        
-        if #available(macOS 13.0, *) {
-            do {
-                if enabled {
-                    if SMAppService.mainApp.status != .enabled {
-                        try SMAppService.mainApp.register()
-                    }
-                    // Clean up legacy LaunchAgent plist if present to avoid duplicate launch
-                    if FileManager.default.fileExists(atPath: plistPath) {
-                        try? FileManager.default.removeItem(atPath: plistPath)
-                    }
-                    return
-                } else {
-                    if SMAppService.mainApp.status == .enabled {
-                        try SMAppService.mainApp.unregister()
-                    }
-                }
-            } catch {
-                print("SMAppService toggle failed, using LaunchAgent fallback: \(error)")
-            }
-        }
-        if enabled {
-            let execPath = Bundle.main.bundlePath.hasSuffix(".app")
-                ? "\(Bundle.main.bundlePath)/Contents/MacOS/MeMo"
-                : "/Applications/MeMo.app/Contents/MacOS/MeMo"
-            
-            let plistContent = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>Label</key>
-                <string>com.giangdq202.memo</string>
-                <key>ProgramArguments</key>
-                <array>
-                    <string>\(execPath)</string>
-                </array>
-                <key>RunAtLoad</key>
-                <true/>
-            </dict>
-            </plist>
-            """
-            
-            do {
-                let launchAgentsDir = NSString(string: "~/Library/LaunchAgents").expandingTildeInPath
-                try FileManager.default.createDirectory(atPath: launchAgentsDir, withIntermediateDirectories: true)
-                try plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
-            } catch {
-                print("Failed to write LaunchAgent plist: \(error)")
-            }
-        } else {
-            let uid = getuid()
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["bootout", "gui/\(uid)", plistPath]
-            try? process.run()
-            process.waitUntilExit()
-            
-            if FileManager.default.fileExists(atPath: plistPath) {
-                try? FileManager.default.removeItem(atPath: plistPath)
-            }
-        }
-    }
-    
+
     @objc private func changeInterval(_ sender: NSMenuItem) {
         if let sec = sender.representedObject as? TimeInterval {
             settings.updateInterval = sec
