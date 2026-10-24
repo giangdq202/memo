@@ -16,17 +16,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private var currentCpuStats = CPUStats()
     private var currentMemStats = MemoryStats()
 
-    // History ring buffers for the dropdown sparkline
-    private var cpuHistory: [Double] = []
-    private var ramHistory: [Double] = []
-    private var tempHistory: [Double] = []
-    private let historyCapacity = 60
-
     // MARK: - Wired Dependencies
 
     /// Single source of truth for user preferences (cached, write-through).
     private let settings = AppSettings.shared
-    private lazy var alertCoordinator = AlertCoordinator(settings: settings)
     private lazy var menuFactory = MenuFactory(settings: settings, actions: self)
 
     private var tempUnit: String { settings.tempUnit }
@@ -46,13 +39,17 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private func setupStatusItem() {
         let statusBar = NSStatusBar.system
 
-        let initialWidth = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
+        let initialWidth = UnifiedStatsView.calculateWidth(
+            showTemperature: showCPUTemperature,
+            layoutMode: settings.menuBarLayout
+        )
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
-        view.onRightClick = { [weak self] in self?.showQuickSettingsMenu() }
+        view.onRightClick = { [weak self] in self?.showMenu() }
 
         view.showTemperature = showCPUTemperature
+        view.layoutMode = settings.menuBarLayout
 
         statusItem = item
         statsView = view
@@ -82,39 +79,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     // MARK: - Update Loop
 
     private func updateStats() {
-        // Skip all SMC work when no temperature consumer is active.
-        let needsTemp = settings.showCPUTemperature
-            || settings.tempAlertThreshold > 0
-            || settings.sparklineMetric == .temp
-            || menuFactory.hasLiveMenu
-
-        currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
+        // Skip all SMC work when the temperature column is hidden.
+        currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: settings.showCPUTemperature)
         currentMemStats = statsEngine.fetchMemoryStats()
 
-        appendHistory()
         renderCurrentStats()
-        alertCoordinator.checkAlerts(
-            cpu: currentCpuStats.usagePercent,
-            memory: currentMemStats.usedPercent,
-            temperature: currentCpuStats.temperature,
-            tempUnit: tempUnit
-        )
-    }
-
-    private func appendHistory() {
-        append(currentCpuStats.usagePercent, to: &cpuHistory)
-        append(currentMemStats.usedPercent, to: &ramHistory)
-        if currentCpuStats.temperature > 0 {
-            append(currentCpuStats.temperature, to: &tempHistory)
-        }
-    }
-
-    /// Appends one sample to a ring buffer capped at `historyCapacity`.
-    private func append(_ value: Double, to buffer: inout [Double]) {
-        buffer.append(value)
-        if buffer.count > historyCapacity {
-            buffer.removeFirst(buffer.count - historyCapacity)
-        }
     }
 
     private func renderCurrentStats() {
@@ -126,43 +95,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             memPercent: currentMemStats.usedPercent,
             pressureLevel: currentMemStats.pressureLevel
         )
-
-        menuFactory.refreshLiveRows(
-            cpu: currentCpuStats,
-            mem: currentMemStats,
-            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
-        )
     }
 
     // MARK: - Menu Presentation
 
+    /// Left- and right-click both open the same settings menu; the menu bar
+    /// numbers are the app's entire dashboard.
     private func showMenu() {
         guard let statusItem = statusItem else { return }
-
-        // The dropdown shows temperature clusters even when the menu bar
-        // column is off; sample them on demand if the ticks have not yet.
-        if currentCpuStats.tempClusters.isEmpty {
-            let temp = statsEngine.sampleTemperatures(fullSample: true)
-            currentCpuStats.temperature = temp.temperature
-            currentCpuStats.tempClusters = temp.clusters
-        }
-
-        let menu = menuFactory.buildDropdownMenu(
-            cpu: currentCpuStats,
-            mem: currentMemStats,
-            top: statsEngine.fetchTopProcesses(limit: 3),
-            histories: HistoryBuffers(cpu: cpuHistory, ram: ramHistory, temp: tempHistory)
-        )
-
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
-    }
-
-    /// Right-click opens a compact settings-only menu.
-    private func showQuickSettingsMenu() {
-        guard let statusItem = statusItem else { return }
-        let menu = menuFactory.buildQuickSettingsMenu()
+        let menu = menuFactory.buildMenu()
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
@@ -185,7 +126,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
 
     private func updateStatusItemWidth() {
         guard let statusItem = statusItem, let statsView = statsView else { return }
-        let width = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
+        let width = UnifiedStatsView.calculateWidth(
+            showTemperature: showCPUTemperature,
+            layoutMode: settings.menuBarLayout
+        )
         statusItem.length = width
         statsView.frame.size.width = width
     }
@@ -219,43 +163,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         }
     }
 
-    @objc func changeSparklineMetric(_ sender: NSMenuItem) {
+    @objc func changeMenuBarLayout(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
-              let metric = SparklineMetric(rawValue: raw) else { return }
-        settings.sparklineMetric = metric
-    }
-
-    @objc func changeCpuAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.cpuAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.cpuAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
-    }
-
-    @objc func changeRamAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.ramAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.ramAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
-    }
-
-    @objc func changeTempAlert(_ sender: NSMenuItem) {
-        guard let level = sender.representedObject as? Double else { return }
-        settings.tempAlertThreshold = level
-        if level > 0 {
-            alertCoordinator.requestAuthorization(onDenied: { [weak self] in
-                self?.settings.tempAlertThreshold = 0
-                self?.menuFactory.refreshSettingsStates()
-            })
-        }
+              let newLayout = MenuBarLayout(rawValue: raw) else { return }
+        settings.menuBarLayout = newLayout
+        statsView?.layoutMode = newLayout
+        updateStatusItemWidth()
+        statsView?.needsDisplay = true
     }
 
     @objc func openGitHubPage() {

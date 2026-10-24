@@ -5,12 +5,12 @@ import Foundation
 // UserDefaults once at startup and kept in memory; setters write through.
 // Callers apply UI side effects themselves — this type only stores state.
 
-/// Selects which metric the history sparkline displays.
-public enum SparklineMetric: String {
-    case off = ""
-    case cpu = "cpu"
-    case ram = "ram"
-    case temp = "temp"
+/// How the menu bar arranges its CPU / RAM / temperature columns.
+public enum MenuBarLayout: String {
+    /// Everything on one horizontal line, e.g. "12% 8.2G 45°C".
+    case single
+    /// Two stacked lines (CPU over RAM), temperature column on the right.
+    case stacked
 }
 
 /// Central, cached access to all persisted user preferences.
@@ -25,10 +25,7 @@ public final class AppSettings {
     private var _updateInterval: TimeInterval
     private var _tempUnit: String
     private var _showCPUTemperature: Bool
-    private var _cpuAlertThreshold: Double
-    private var _ramAlertThreshold: Double
-    private var _tempAlertThreshold: Double
-    private var _sparklineMetric: SparklineMetric
+    private var _menuBarLayout: MenuBarLayout
 
     /// - Parameter defaults: persistence backend; injectable for tests.
     public init(defaults: UserDefaults = .standard) {
@@ -37,10 +34,7 @@ public final class AppSettings {
         self._updateInterval = storedInterval > 0 ? storedInterval : 2.0
         self._tempUnit = defaults.string(forKey: "tempUnit") ?? "C"
         self._showCPUTemperature = defaults.object(forKey: "showCPUTemperature") as? Bool ?? true
-        self._cpuAlertThreshold = defaults.double(forKey: "cpuAlertThreshold")
-        self._ramAlertThreshold = defaults.double(forKey: "ramAlertThreshold")
-        self._tempAlertThreshold = defaults.double(forKey: "tempAlertThreshold")
-        self._sparklineMetric = SparklineMetric(rawValue: defaults.string(forKey: "sparklineMetric") ?? "") ?? .off
+        self._menuBarLayout = MenuBarLayout(rawValue: defaults.string(forKey: "menuBarLayout") ?? "") ?? .single
     }
 
     /// Refresh interval in seconds. Preset values: 0.25, 0.5, 1.0, 2.0, 5.0.
@@ -70,39 +64,12 @@ public final class AppSettings {
         }
     }
 
-    /// CPU usage notification threshold in percent; 0 disables the alert.
-    public var cpuAlertThreshold: Double {
-        get { _cpuAlertThreshold }
+    /// How the menu bar arranges its columns: one line or two stacked lines.
+    public var menuBarLayout: MenuBarLayout {
+        get { _menuBarLayout }
         set {
-            _cpuAlertThreshold = newValue
-            defaults.set(newValue, forKey: "cpuAlertThreshold")
-        }
-    }
-
-    /// Memory usage notification threshold in percent; 0 disables the alert.
-    public var ramAlertThreshold: Double {
-        get { _ramAlertThreshold }
-        set {
-            _ramAlertThreshold = newValue
-            defaults.set(newValue, forKey: "ramAlertThreshold")
-        }
-    }
-
-    /// CPU temperature notification threshold in degrees Celsius; 0 disables.
-    public var tempAlertThreshold: Double {
-        get { _tempAlertThreshold }
-        set {
-            _tempAlertThreshold = newValue
-            defaults.set(newValue, forKey: "tempAlertThreshold")
-        }
-    }
-
-    /// Which metric (if any) the dropdown history sparkline displays.
-    public var sparklineMetric: SparklineMetric {
-        get { _sparklineMetric }
-        set {
-            _sparklineMetric = newValue
-            defaults.set(newValue.rawValue, forKey: "sparklineMetric")
+            _menuBarLayout = newValue
+            defaults.set(newValue.rawValue, forKey: "menuBarLayout")
         }
     }
 }

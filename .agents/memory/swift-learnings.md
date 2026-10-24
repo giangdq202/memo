@@ -313,3 +313,19 @@
 
 **Value-Type Data Bundles**
 - `struct HistoryBuffers { let cpu, ram, temp: [Double] }` passes multiple arrays through one parameter, making the push API (`refreshLiveRows`) read clearly at the call site.
+
+## Session N+1 - 2026-10-24: Menu Bar First Simplification
+
+### Concepts Learned
+
+**Removing a feature is a refactor too**
+- Deleting a feature must remove its whole constellation together: view, cache fields, UserDefaults key, submenu, doc list. `policy-check.sh` caught the doc drift the moment a key changed.
+
+**NSView.name collisions**
+- `NSView` already has a `layout()` method; declaring a stored property named `layout` makes the compiler resolve `layout` to that method, producing baffling errors like "pattern cannot match values of type () -> Void". Renamed to `layoutMode`.
+
+**Fixed-width sections vs jitter**
+- Menu bar text shifts sideways whenever a digit count changes (9% -> 10%). Right-aligning each metric inside a section measured from the worst-case string ("100%", "888.8G", "188°C") with `monospacedDigitSystemFont` keeps the item rock-stable.
+
+**Smoke-test compile sets drift with dependencies**
+- When StatusBarView started referencing a type from AppSettings.swift, the smoke harness's explicit file list stopped compiling; the harness list must track cross-file dependencies.
