@@ -95,10 +95,7 @@ Every key used in code must appear here (checked by `scripts/policy-check.sh`). 
 * `tempUnit` (String "C" or "F"; default "C")
 * `showCPUTemperature` (Bool; default true)
 * `LaunchAtLogin` (Bool; default false)
-* `cpuAlertThreshold` (Double, 0 = off; presets 60/70/80/90/95; default 0)
-* `ramAlertThreshold` (Double, 0 = off; presets 70/80/85/90/95; default 0)
-* `tempAlertThreshold` (Double, 0 = off; presets 70/80/90/100; default 0)
-* `sparklineMetric` (String "", "cpu", "ram", "temp"; default "")
+* `menuBarLayout` (String "single" or "stacked"; default "single")
 
 ## Skills
 

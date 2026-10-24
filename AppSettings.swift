@@ -5,6 +5,14 @@ import Foundation
 // UserDefaults once at startup and kept in memory; setters write through.
 // Callers apply UI side effects themselves — this type only stores state.
 
+/// How the menu bar arranges its CPU / RAM / temperature columns.
+public enum MenuBarLayout: String {
+    /// Everything on one horizontal line, e.g. "12% 8.2G 45°C".
+    case single
+    /// Two stacked lines (CPU over RAM), temperature column on the right.
+    case stacked
+}
+
 /// Central, cached access to all persisted user preferences.
 /// Keys and defaults are documented in AGENTS.md; do not rename keys
 /// (installed copies would silently lose their settings).
@@ -17,6 +25,7 @@ public final class AppSettings {
     private var _updateInterval: TimeInterval
     private var _tempUnit: String
     private var _showCPUTemperature: Bool
+    private var _menuBarLayout: MenuBarLayout
 
     /// - Parameter defaults: persistence backend; injectable for tests.
     public init(defaults: UserDefaults = .standard) {
@@ -25,6 +34,7 @@ public final class AppSettings {
         self._updateInterval = storedInterval > 0 ? storedInterval : 2.0
         self._tempUnit = defaults.string(forKey: "tempUnit") ?? "C"
         self._showCPUTemperature = defaults.object(forKey: "showCPUTemperature") as? Bool ?? true
+        self._menuBarLayout = MenuBarLayout(rawValue: defaults.string(forKey: "menuBarLayout") ?? "") ?? .single
     }
 
     /// Refresh interval in seconds. Preset values: 0.25, 0.5, 1.0, 2.0, 5.0.
@@ -51,6 +61,15 @@ public final class AppSettings {
         set {
             _showCPUTemperature = newValue
             defaults.set(newValue, forKey: "showCPUTemperature")
+        }
+    }
+
+    /// How the menu bar arranges its columns: one line or two stacked lines.
+    public var menuBarLayout: MenuBarLayout {
+        get { _menuBarLayout }
+        set {
+            _menuBarLayout = newValue
+            defaults.set(newValue.rawValue, forKey: "menuBarLayout")
         }
     }
 }

@@ -14,6 +14,7 @@ import AppKit
     func toggleLaunchAtLogin(_ sender: NSMenuItem)
     func changeInterval(_ sender: NSMenuItem)
     func changeTempUnit(_ sender: NSMenuItem)
+    func changeMenuBarLayout(_ sender: NSMenuItem)
 }
 
 /// Assembles the menu the status item shows on click (left or right).
@@ -28,6 +29,7 @@ final class MenuFactory {
     private var cachedLaunchAtLoginItem: NSMenuItem?
     private var cachedIntervalSubmenu: NSMenu?
     private var cachedTempUnitSubmenu: NSMenu?
+    private var cachedLayoutSubmenu: NSMenu?
     private var cachedGitHubItem: NSMenuItem?
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
@@ -97,8 +99,19 @@ final class MenuFactory {
         tempUnitItem.submenu = tempUnitSubmenu
         cachedTempUnitSubmenu = tempUnitSubmenu
 
+        let layoutSubmenu = NSMenu()
+        for (label, layout) in [("Single Line", MenuBarLayout.single.rawValue), ("Two Lines", MenuBarLayout.stacked.rawValue)] {
+            let item = NSMenuItem(title: label, action: #selector(MenuActions.changeMenuBarLayout(_:)), keyEquivalent: "")
+            item.target = actions
+            item.representedObject = layout
+            layoutSubmenu.addItem(item)
+        }
+        let layoutItem = NSMenuItem(title: "Menu Bar Layout", action: nil, keyEquivalent: "")
+        layoutItem.submenu = layoutSubmenu
+        cachedLayoutSubmenu = layoutSubmenu
+
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem]
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem, layoutItem]
     }
 
     private func buildFooterItems() {
@@ -136,6 +149,13 @@ final class MenuFactory {
             for item in submenu.items {
                 if let key = item.representedObject as? String {
                     item.state = (settings.tempUnit == key) ? .on : .off
+                }
+            }
+        }
+        if let submenu = cachedLayoutSubmenu {
+            for item in submenu.items {
+                if let raw = item.representedObject as? String {
+                    item.state = (settings.menuBarLayout.rawValue == raw) ? .on : .off
                 }
             }
         }

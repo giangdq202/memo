@@ -39,13 +39,17 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     private func setupStatusItem() {
         let statusBar = NSStatusBar.system
 
-        let initialWidth = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
+        let initialWidth = UnifiedStatsView.calculateWidth(
+            showTemperature: showCPUTemperature,
+            layoutMode: settings.menuBarLayout
+        )
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
         view.onRightClick = { [weak self] in self?.showMenu() }
 
         view.showTemperature = showCPUTemperature
+        view.layoutMode = settings.menuBarLayout
 
         statusItem = item
         statsView = view
@@ -122,7 +126,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
 
     private func updateStatusItemWidth() {
         guard let statusItem = statusItem, let statsView = statsView else { return }
-        let width = UnifiedStatsView.calculateWidth(showTemperature: showCPUTemperature)
+        let width = UnifiedStatsView.calculateWidth(
+            showTemperature: showCPUTemperature,
+            layoutMode: settings.menuBarLayout
+        )
         statusItem.length = width
         statsView.frame.size.width = width
     }
@@ -154,6 +161,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             settings.tempUnit = unit
             renderCurrentStats()
         }
+    }
+
+    @objc func changeMenuBarLayout(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let newLayout = MenuBarLayout(rawValue: raw) else { return }
+        settings.menuBarLayout = newLayout
+        statsView?.layoutMode = newLayout
+        updateStatusItemWidth()
+        statsView?.needsDisplay = true
     }
 
     @objc func openGitHubPage() {

@@ -28,6 +28,6 @@ SWIFT
 SDK_PATH="$(xcrun --show-sdk-path)"
 swiftc -O -sdk "$SDK_PATH" -module-name MeMoSmoke \
   -framework AppKit -framework IOKit -framework Foundation \
-  "$ROOT/SMC.swift" "$ROOT/StatsEngine.swift" "$ROOT/Formatters.swift" "$ROOT/StatusBarView.swift" \
+  "$ROOT/SMC.swift" "$ROOT/StatsEngine.swift" "$ROOT/Formatters.swift" "$ROOT/StatusBarView.swift" "$ROOT/AppSettings.swift" \
   "$TMP_DIR/main.swift" -o "$TMP_DIR/smoke"
 "$TMP_DIR/smoke"
