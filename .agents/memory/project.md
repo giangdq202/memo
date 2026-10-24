@@ -10,6 +10,11 @@
 
 ## Architectural Decisions
 
+### 2026-10-24: Single-Line Typography Polish (PR #34)
+- **11pt values** (was 10pt) for legibility on non-Retina displays; unit suffixes (%, G, °C) uniformly smaller + dimmer so numbers read first (previously only °C was dimmed).
+- **Accessibility label** updated per value change for VoiceOver.
+- Deliberately NOT done: CPU smoothing (would fake the data, violating the owner's "real numbers" value) and palette changes (green-normal is the app's identity from upstream).
+
 ### 2026-10-24: Menu Bar First Simplification
 - **Applied the Product Philosophy**: owner confirmed they never use the left-click dropdown, so the menu bar numbers are now the entire UI.
 - **Removed**: threshold alerts (AlertCoordinator deleted), history sparkline (view, ring buffers, submenu), top-processes sampling (no more /bin/ps subprocess), the hover tooltip (NSViewToolTipOwner), and the whole dropdown with its live-row updaters and menu width-swap hack (MenuViews.swift deleted).
