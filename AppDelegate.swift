@@ -43,7 +43,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         let item = statusBar.statusItem(withLength: initialWidth)
         let view = UnifiedStatsView(frame: NSRect(x: 0, y: 0, width: initialWidth, height: 22))
         view.onClick = { [weak self] in self?.showMenu() }
-        view.onRightClick = { [weak self] in self?.showQuickSettingsMenu() }
+        view.onRightClick = { [weak self] in self?.showMenu() }
 
         view.showTemperature = showCPUTemperature
 
@@ -75,11 +75,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     // MARK: - Update Loop
 
     private func updateStats() {
-        // Skip all SMC work when no temperature consumer is active.
-        let needsTemp = settings.showCPUTemperature
-            || menuFactory.hasLiveMenu
-
-        currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: needsTemp)
+        // Skip all SMC work when the temperature column is hidden.
+        currentCpuStats = statsEngine.fetchCPUStats(includeTemperature: settings.showCPUTemperature)
         currentMemStats = statsEngine.fetchMemoryStats()
 
         renderCurrentStats()
@@ -94,37 +91,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             memPercent: currentMemStats.usedPercent,
             pressureLevel: currentMemStats.pressureLevel
         )
-
-        menuFactory.refreshLiveRows(cpu: currentCpuStats, mem: currentMemStats)
     }
 
     // MARK: - Menu Presentation
 
+    /// Left- and right-click both open the same settings menu; the menu bar
+    /// numbers are the app's entire dashboard.
     private func showMenu() {
         guard let statusItem = statusItem else { return }
-
-        // The dropdown shows temperature clusters even when the menu bar
-        // column is off; sample them on demand if the ticks have not yet.
-        if currentCpuStats.tempClusters.isEmpty {
-            let temp = statsEngine.sampleTemperatures(fullSample: true)
-            currentCpuStats.temperature = temp.temperature
-            currentCpuStats.tempClusters = temp.clusters
-        }
-
-        let menu = menuFactory.buildDropdownMenu(
-            cpu: currentCpuStats,
-            mem: currentMemStats
-        )
-
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
-    }
-
-    /// Right-click opens a compact settings-only menu.
-    private func showQuickSettingsMenu() {
-        guard let statusItem = statusItem else { return }
-        let menu = menuFactory.buildQuickSettingsMenu()
+        let menu = menuFactory.buildMenu()
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil

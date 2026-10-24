@@ -1,9 +1,8 @@
 import AppKit
 
 // MARK: - Menu Factory (Controller Layer — View Assembly)
-// Builds the dropdown and quick-settings NSMenus, caches static items across
-// opens, and refreshes live rows while a menu is open. Decoupled from
-// AppDelegate through the MenuActions protocol; never touches StatsEngine.
+// Builds the single settings menu shown on left- or right-click. Every item
+// is built once and reused; there is nothing dynamic left to update.
 
 /// Actions the settings menu dispatches back to the app controller.
 /// Implemented by AppDelegate.
@@ -17,13 +16,12 @@ import AppKit
     func changeTempUnit(_ sender: NSMenuItem)
 }
 
-/// Assembles every NSMenu the status item shows and keeps live rows in sync
-/// with the latest sampled values while a menu is open.
-final class MenuFactory: NSObject, NSMenuDelegate {
+/// Assembles the menu the status item shows on click (left or right).
+final class MenuFactory {
     private let settings: AppSettings
     private weak var actions: MenuActions?
 
-    // Static menu items are built once and reused across menu opens.
+    // Menu items are built once and reused across opens.
     private var cachedVersionItem: NSMenuItem?
     private var cachedActivityItem: NSMenuItem?
     private var cachedShowTemperatureItem: NSMenuItem?
@@ -34,24 +32,15 @@ final class MenuFactory: NSObject, NSMenuDelegate {
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
 
-    // Live rows: updaters run on each tick while the menu is open.
-    private var liveUpdaters: [() -> Void] = []
-    private var latestCpu = CPUStats()
-    private var latestMem = MemoryStats()
-
-    /// Whether a menu with live rows is currently open.
-    var hasLiveMenu: Bool { !liveUpdaters.isEmpty }
-
     /// - Parameters:
     ///   - settings: source of the values the menu checkmarks reflect.
     ///   - actions: receiver for every menu item action (held weakly).
     init(settings: AppSettings, actions: MenuActions) {
         self.settings = settings
         self.actions = actions
-        super.init()
     }
 
-    // MARK: - Static Item Builders
+    // MARK: - Item Builders
 
     private func buildAboutItem() {
         let versionStr = BUILD_VERSION
@@ -150,7 +139,6 @@ final class MenuFactory: NSObject, NSMenuDelegate {
                 }
             }
         }
-
     }
 
     /// Detaches a cached item from its previous menu (if any) and adds it to the
@@ -161,174 +149,29 @@ final class MenuFactory: NSObject, NSMenuDelegate {
         menu.addItem(item)
     }
 
-    // MARK: - Dropdown Menu
+    // MARK: - Menu
 
-    /// Builds the full dropdown menu from the latest sampled values.
-    /// - Parameters:
-    ///   - cpu: CPU stats (usage, temperature, clusters) to display.
-    ///   - mem: Memory stats to display.
-    /// - Returns: A configured menu with live rows ready for refresh ticks.
-    func buildDropdownMenu(cpu: CPUStats, mem: MemoryStats) -> NSMenu {
-        latestCpu = cpu
-        latestMem = mem
-
+    /// Builds the one menu the app shows: version header, settings,
+    /// Activity Monitor, GitHub, and Quit.
+    func buildMenu() -> NSMenu {
         refreshSettingsStates()
 
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        // --- About Header ---
         reuse(cachedVersionItem, in: menu)
         menu.addItem(NSMenuItem.separator())
 
-        var customViews: [(item: NSMenuItem, builder: (CGFloat) -> (NSView, () -> Void))] = []
-
-        // --- System Summary Section ---
-        let cpuItem = NSMenuItem(title: "CPU              100%", action: nil, keyEquivalent: "")
-        cpuItem.isEnabled = false
-        menu.addItem(cpuItem)
-        customViews.append((cpuItem, { [weak self] width in
-            guard let self = self else { return (NSView(), {}) }
-            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "CPU", percent: self.latestCpu.usagePercent, valueText: formatCPU(self.latestCpu.usagePercent), prefix: "cpu", width: width)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let pct = self.latestCpu.usagePercent
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                updateBlock(pct, formatCPU(pct), colorForUsage(pct, isDark: isDark, metricPrefix: "cpu"))
-            }
-            return (view, updater)
-        }))
-
-        let ramItem = NSMenuItem(title: "RAM              32.0/32.0 GB", action: nil, keyEquivalent: "")
-        ramItem.isEnabled = false
-        menu.addItem(ramItem)
-        customViews.append((ramItem, { [weak self] width in
-            guard let self = self else { return (NSView(), {}) }
-            let valStr = String(format: "%.1f/%.0f GB", self.latestMem.usedGB, self.latestMem.totalGB)
-            let (view, updateBlock) = MenuRowFactory.progressBarRow(label: "RAM", percent: self.latestMem.usedPercent, valueText: valStr, prefix: "mem", width: width, pressureLevel: self.latestMem.pressureLevel)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let pct = self.latestMem.usedPercent
-                let pressure = self.latestMem.pressureLevel
-                let newStr = String(format: "%.1f/%.0f GB", self.latestMem.usedGB, self.latestMem.totalGB)
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                updateBlock(pct, newStr, colorForUsage(pct, isDark: isDark, metricPrefix: "mem", pressureLevel: pressure))
-            }
-            return (view, updater)
-        }))
-
-        let tempItem = NSMenuItem(title: "Temp              100°C", action: nil, keyEquivalent: "")
-        tempItem.isEnabled = false
-        menu.addItem(tempItem)
-        customViews.append((tempItem, { [weak self] width in
-            guard let self = self else { return (NSView(), {}) }
-            let t = self.latestCpu.temperature
-            let valStr = formatTemperature(t, unit: self.settings.tempUnit)
-            let (view, updateBlock) = MenuRowFactory.inlineRow(label: "Temp", valueText: valStr, isTemp: true, tempVal: t, width: width)
-            let updater = { [weak self, weak view] in
-                guard let self = self, let view = view else { return }
-                let tNew = self.latestCpu.temperature
-                let newStr = formatTemperature(tNew, unit: self.settings.tempUnit)
-                let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                let color = (tNew > 0) ? colorForTemperature(tNew, isDark: isDark) : .secondaryLabelColor
-                updateBlock(newStr, color)
-            }
-            return (view, updater)
-        }))
-        menu.addItem(NSMenuItem.separator())
-
-        // --- Temperatures Section ---
-        if !latestCpu.tempClusters.isEmpty {
-            menu.addItem(MenuRowFactory.sectionHeader("Temperatures"))
-            for cluster in latestCpu.tempClusters {
-                let item = NSMenuItem(title: "\(cluster.name)    \(String(format: "%.0f°C", cluster.temperature))", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-                menu.addItem(item)
-
-                customViews.append((item, { [weak self] width in
-                    guard let self = self else { return (NSView(), {}) }
-                    let t = cluster.temperature
-                    let valStr = formatTemperature(t, unit: self.settings.tempUnit)
-
-                    let (view, updateBlock) = MenuRowFactory.tempClusterRow(name: cluster.name, valueText: valStr, tempVal: t, width: width)
-                    let updater = { [weak self, weak view] in
-                        guard let self = self, let view = view else { return }
-                        // Find this cluster's updated temperature
-                        let newT = self.latestCpu.tempClusters.first(where: { $0.name == cluster.name })?.temperature ?? 0.0
-                        let newStr = formatTemperature(newT, unit: self.settings.tempUnit)
-                        let isDark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                        let color = (newT > 0) ? colorForTemperature(newT, isDark: isDark) : .secondaryLabelColor
-                        updateBlock(newStr, color)
-                    }
-                    return (view, updater)
-                }))
-            }
-            menu.addItem(NSMenuItem.separator())
-        }
-
-        // Jump to Activity Monitor for the full, detailed breakdown.
-        reuse(cachedActivityItem, in: menu)
-        menu.addItem(NSMenuItem.separator())
-
-        // --- Settings Section ---
         for item in cachedSettingsParentItems {
             reuse(item, in: menu)
         }
         menu.addItem(NSMenuItem.separator())
 
-        // GitHub Link
+        reuse(cachedActivityItem, in: menu)
         reuse(cachedGitHubItem, in: menu)
         menu.addItem(NSMenuItem.separator())
 
-        // Quit
         reuse(cachedQuitItem, in: menu)
-
-        // Now that every item is present, the menu's width is final. Replace each
-        // provisional item with a custom view that fills that width.
-        liveUpdaters.removeAll()
-        if !customViews.isEmpty {
-            let width = menu.size.width
-            for cv in customViews {
-                cv.item.title = ""
-                let (view, updater) = cv.builder(width)
-                cv.item.view = view
-                liveUpdaters.append(updater)
-            }
-        }
-
-        menu.delegate = self
         return menu
-    }
-
-    /// Right-click menu: cached settings items plus Quit, nothing dynamic.
-    func buildQuickSettingsMenu() -> NSMenu {
-        refreshSettingsStates()
-
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for item in cachedSettingsParentItems {
-            reuse(item, in: menu)
-        }
-        menu.addItem(NSMenuItem.separator())
-        reuse(cachedQuitItem, in: menu)
-
-        menu.delegate = self
-        return menu
-    }
-
-    // MARK: - Live Rows
-
-    /// Stores the latest sampled values and reruns every live-row updater.
-    /// No-op while no menu is open.
-    func refreshLiveRows(cpu: CPUStats, mem: MemoryStats) {
-        latestCpu = cpu
-        latestMem = mem
-        for updater in liveUpdaters {
-            updater()
-        }
-    }
-
-    public func menuDidClose(_ menu: NSMenu) {
-        liveUpdaters.removeAll()
     }
 }
