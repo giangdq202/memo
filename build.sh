@@ -21,7 +21,7 @@ python3 generate_icon.py || echo "Warning: Icon generation failed, continuing...
 BUILD_TIME=$(date "+%y%m%d.%H%M")
 echo "let BUILD_VERSION = \"1.0.0 (${BUILD_TIME})\"" > Version.swift
 
-SOURCES=(SMC.swift StatsEngine.swift StatusBarView.swift AppDelegate.swift main.swift Version.swift)
+SOURCES=(SMC.swift StatsEngine.swift Formatters.swift StatusBarView.swift AppDelegate.swift main.swift Version.swift)
 if [ -d "/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk" ]; then
     SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk"
 else
