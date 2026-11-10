@@ -11,6 +11,18 @@
 
 ## Architectural Decisions
 
+### 2026-11-04: Telemetry Core, Low-Level IOKit & UI/UX Architecture Upgrade
+- **SMC Hardware Verification & FourCharCode Optimization**: Enforced `output.result == 0` validation in `call()`, rejecting invalid SMC keys before caching or issuing redundant `readBytes` kernel calls. Replaced hot-path FourCharCode String conversions with raw `UInt32` matching and decoding for `flt `, `sp78`, `ioft`, `fpe2`, `si16`, `si32`. Protected `keyInfoCache` with `os_unfair_lock`.
+- **Zero-VM CPU Sampling & Targeted Startup Probe**: Migrated CPU sampling from `host_processor_info` (which triggered 1-4 VM page allocations/deallocations per second) to stack-allocated `host_statistics(HOST_CPU_LOAD_INFO)`. Replaced 1,847-key full enumeration with candidate probing for `Tp*` and `Te*`, reducing discovery latency from ~166ms to ~12ms. Single-pass linear average in `sampleTemperatures()` eliminates dictionary mutations. Added `resetCpuTicks()` on wake.
+- **UI/UX Geometry, Dynamic Appearance & Power Lifecycle**: Fixed Fahrenheit menu bar clipping by expanding `singleTempSectionWidth` from 29pt (`188°`) to 35pt (`188°F`). Implemented `viewDidChangeEffectiveAppearance()` for immediate appearance adaptation. Added pre-allocated static drawing attribute dictionaries and invariant unit tokens. Moved accessibility string interpolation to on-demand `accessibilityLabel()`.
+- **RAM Display Mode & Menu Telemetry Summary**: Added `ramDisplayMode` setting (`"gb"` / `"percent"`). Added disabled, clean summary rows to `MenuFactory.buildMenu()` displaying real-time CPU breakdown, RAM breakdown, and thermal state. Observed `screensDidSleepNotification` and `didWakeNotification` to pause/resume sampling timer.
+
+### 2026-11-03: Apple Silicon Thermal Telemetry & Zero-Allocation SMC Optimization
+- **Temperature Discrepancy Resolved**: Documented why MeMo reports 45°C vs Hot's 38°C on Apple Silicon (see `docs/temperature-discrepancy.md`). MeMo measures true active CPU silicon core junctions (`Tp*` and `Te*`); Hot fails to detect CPU sensors on modern Apple Silicon and dilutes the reading across 181 whole-chassis sensors (battery, palm rest, ambient).
+- **Eliminated 30-Second Main-Thread Freeze**: Replaced periodic 1,847-key rescan loop in `StatsEngine` with one-time discovery at startup and internal caching in `SMC.shared.getAllTemperatureKeys()`, eliminating the ~150-240 ms UI freeze every 30 seconds.
+- **Streamlined CPU Polling**: Pruned sensor polling strictly to active CPU core clusters (`P-Cores` and `E-Cores`), eliminating 54 unused GPU and Other CPU IOKit reads and multi-second cluster rotation lag.
+- **Zero Heap Allocation in Hot Path**: Replaced heap `[UInt8]` array in `SMCVal_t` with inline 32-byte fixed buffer (`SMCBytes32`) and direct `Float(bytes:)` loading.
+
 ### 2026-10-24: Separator Rhythm (PR #37)
 - **Problem (from owner's screenshot)**: at 11pt the three right-aligned metrics blurred into one digit run.
 - **Fix**: Swiss-style mid-dot separators (`·`, tertiaryLabelColor, 9pt, centered in fixed slots) between metrics — `13% · 17.9G · 43°`; constant rhythm regardless of digit counts. Celsius renders bare `°`; Fahrenheit keeps `°F`.
