@@ -26,6 +26,7 @@ public final class AppSettings {
     private var _tempUnit: String
     private var _showCPUTemperature: Bool
     private var _menuBarLayout: MenuBarLayout
+    private var _ramDisplayMode: String
 
     /// - Parameter defaults: persistence backend; injectable for tests.
     public init(defaults: UserDefaults = .standard) {
@@ -35,6 +36,7 @@ public final class AppSettings {
         self._tempUnit = defaults.string(forKey: "tempUnit") ?? "C"
         self._showCPUTemperature = defaults.object(forKey: "showCPUTemperature") as? Bool ?? true
         self._menuBarLayout = MenuBarLayout(rawValue: defaults.string(forKey: "menuBarLayout") ?? "") ?? .single
+        self._ramDisplayMode = defaults.string(forKey: "ramDisplayMode") ?? "gb"
     }
 
     /// Refresh interval in seconds. Preset values: 0.25, 0.5, 1.0, 2.0, 5.0.
@@ -70,6 +72,15 @@ public final class AppSettings {
         set {
             _menuBarLayout = newValue
             defaults.set(newValue.rawValue, forKey: "menuBarLayout")
+        }
+    }
+
+    /// RAM display mode: "gb" (default) or "percent".
+    public var ramDisplayMode: String {
+        get { _ramDisplayMode }
+        set {
+            _ramDisplayMode = newValue
+            defaults.set(newValue, forKey: "ramDisplayMode")
         }
     }
 }
