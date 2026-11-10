@@ -15,6 +15,7 @@ import AppKit
     func changeInterval(_ sender: NSMenuItem)
     func changeTempUnit(_ sender: NSMenuItem)
     func changeMenuBarLayout(_ sender: NSMenuItem)
+    func changeRamDisplayMode(_ sender: NSMenuItem)
 }
 
 /// Assembles the menu the status item shows on click (left or right).
@@ -30,6 +31,7 @@ final class MenuFactory {
     private var cachedIntervalSubmenu: NSMenu?
     private var cachedTempUnitSubmenu: NSMenu?
     private var cachedLayoutSubmenu: NSMenu?
+    private var cachedRamDisplaySubmenu: NSMenu?
     private var cachedGitHubItem: NSMenuItem?
     private var cachedQuitItem: NSMenuItem?
     private var cachedSettingsParentItems: [NSMenuItem] = []
@@ -110,8 +112,19 @@ final class MenuFactory {
         layoutItem.submenu = layoutSubmenu
         cachedLayoutSubmenu = layoutSubmenu
 
+        let ramSubmenu = NSMenu()
+        for (label, mode) in [("Gigabytes (GB)", "gb"), ("Percentage (%)", "percent")] {
+            let item = NSMenuItem(title: label, action: #selector(MenuActions.changeRamDisplayMode(_:)), keyEquivalent: "")
+            item.target = actions
+            item.representedObject = mode
+            ramSubmenu.addItem(item)
+        }
+        let ramItem = NSMenuItem(title: "RAM Display Mode", action: nil, keyEquivalent: "")
+        ramItem.submenu = ramSubmenu
+        cachedRamDisplaySubmenu = ramSubmenu
+
         // Store the parent items in the settings order they appear in the menu.
-        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem, layoutItem]
+        cachedSettingsParentItems = [showTempItem, autoStartItem, refreshItem, tempUnitItem, layoutItem, ramItem]
     }
 
     private func buildFooterItems() {
@@ -159,6 +172,13 @@ final class MenuFactory {
                 }
             }
         }
+        if let submenu = cachedRamDisplaySubmenu {
+            for item in submenu.items {
+                if let mode = item.representedObject as? String {
+                    item.state = (settings.ramDisplayMode == mode) ? .on : .off
+                }
+            }
+        }
     }
 
     /// Detaches a cached item from its previous menu (if any) and adds it to the
@@ -171,15 +191,51 @@ final class MenuFactory {
 
     // MARK: - Menu
 
-    /// Builds the one menu the app shows: version header, settings,
-    /// Activity Monitor, GitHub, and Quit.
-    func buildMenu() -> NSMenu {
+    /// Builds the one menu the app shows: version header, telemetry summary,
+    /// settings, Activity Monitor, GitHub, and Quit.
+    func buildMenu(cpuStats: CPUStats? = nil, memStats: MemoryStats? = nil) -> NSMenu {
         refreshSettingsStates()
 
         let menu = NSMenu()
         menu.autoenablesItems = false
 
         reuse(cachedVersionItem, in: menu)
+
+        // Telemetry summary rows (clean, disabled items displaying live metrics)
+        if let cpu = cpuStats, let mem = memStats {
+            menu.addItem(NSMenuItem.separator())
+
+            let summaryFont = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weight: .regular)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .font: summaryFont
+            ]
+
+            let cpuLine = "CPU: \(Int(cpu.usagePercent.rounded()))% · User: \(Int(cpu.userPercent.rounded()))% · System: \(Int(cpu.systemPercent.rounded()))%"
+            let cpuItem = NSMenuItem(title: cpuLine, action: nil, keyEquivalent: "")
+            cpuItem.isEnabled = false
+            cpuItem.attributedTitle = NSAttributedString(string: cpuLine, attributes: attrs)
+            menu.addItem(cpuItem)
+
+            let memLine = "RAM: \(String(format: "%.1f", mem.usedGB)) / \(String(format: "%.1f", mem.totalGB)) GB (\(Int(mem.usedPercent.rounded()))%)"
+            let memItem = NSMenuItem(title: memLine, action: nil, keyEquivalent: "")
+            memItem.isEnabled = false
+            memItem.attributedTitle = NSAttributedString(string: memLine, attributes: attrs)
+            menu.addItem(memItem)
+
+            let thermalLine: String
+            if cpu.temperature > 0 {
+                let tempStr = formatTemperatureValue(cpu.temperature, unit: settings.tempUnit) + "°" + settings.tempUnit
+                thermalLine = "Temp: \(tempStr) · Thermal: \(cpu.thermalStateDescription)"
+            } else {
+                thermalLine = "Thermal Pressure: \(cpu.thermalStateDescription)"
+            }
+            let thermalItem = NSMenuItem(title: thermalLine, action: nil, keyEquivalent: "")
+            thermalItem.isEnabled = false
+            thermalItem.attributedTitle = NSAttributedString(string: thermalLine, attributes: attrs)
+            menu.addItem(thermalItem)
+        }
+
         menu.addItem(NSMenuItem.separator())
 
         for item in cachedSettingsParentItems {

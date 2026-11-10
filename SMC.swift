@@ -54,16 +54,54 @@ internal struct SMCKeyData_t {
                              UInt8(0), UInt8(0))
 }
 
-internal struct SMCVal_t {
-    var key: String
-    var dataSize: UInt32 = 0
-    var dataType: String = ""
-    var bytes: [UInt8] = Array(repeating: 0, count: 32)
-    
-    init(_ key: String) {
-        self.key = key
+internal struct SMCBytes32 {
+    var raw: SMCKeyData_t.SMCBytes_t = (
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    )
+
+    @inline(__always)
+    subscript(index: Int) -> UInt8 {
+        get {
+            Swift.withUnsafeBytes(of: raw) { $0[index] }
+        }
+        set {
+            withUnsafeMutableBytes(of: &raw) { $0[index] = newValue }
+        }
+    }
+
+    func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        return try Swift.withUnsafeBytes(of: raw, body)
     }
 }
+
+internal struct SMCVal_t {
+    var key: UInt32 = 0
+    var dataSize: UInt32 = 0
+    var dataType: UInt32 = 0
+    var bytes = SMCBytes32()
+
+    init(_ key: UInt32) {
+        self.key = key
+    }
+
+    init(_ key: String) {
+        self.key = FourCharCode(fromString: key)
+    }
+}
+
+// MARK: - FourCharCode Data Types
+private let kSMCTypeUI8: UInt32  = 0x75693820  // 'ui8 '
+private let kSMCTypeUI16: UInt32 = 0x75693136  // 'ui16'
+private let kSMCTypeUI32: UInt32 = 0x75693332  // 'ui32'
+private let kSMCTypeFlt: UInt32  = 0x666C7420  // 'flt '
+private let kSMCTypeSP78: UInt32 = 0x73703738  // 'sp78'
+private let kSMCTypeIOFT: UInt32 = 0x696F6674  // 'ioft'
+private let kSMCTypeFpe2: UInt32 = 0x66706532  // 'fpe2'
+private let kSMCTypeSI16: UInt32 = 0x73693136  // 'si16'
+private let kSMCTypeSI32: UInt32 = 0x73693332  // 'si32'
 
 extension FourCharCode {
     init(fromString str: String) {
@@ -98,6 +136,14 @@ extension UInt32 {
 }
 
 extension Float {
+    init?(bytes: SMCBytes32) {
+        var fval: Float = 0
+        withUnsafeBytes(of: bytes.raw) { buf in
+            fval = buf.load(fromByteOffset: 0, as: Float.self)
+        }
+        self = fval
+    }
+
     init?(_ bytes: [UInt8]) {
         if bytes.count < 4 { return nil }
         self = bytes.withUnsafeBytes {
@@ -115,7 +161,9 @@ private let kIOMainPortDefaultCompat: mach_port_t = 0
 public class SMC {
     public static let shared = SMC()
     private var conn: io_connect_t = 0
+    private var lock = os_unfair_lock_s()
     private var keyInfoCache: [UInt32: SMCKeyData_t.keyInfo_t] = [:]
+    private var cachedTempKeys: [String]?
     
     public init() {
         var result: kern_return_t
@@ -146,35 +194,111 @@ public class SMC {
             _ = IOServiceClose(conn)
         }
     }
+
+    /// Reads and caches key info for a 32-bit FourCharCode key with thread safety.
+    /// Returns nil if the key does not exist or SMC returns a non-zero result.
+    internal func readKeyInfo(_ fourCC: UInt32) -> SMCKeyData_t.keyInfo_t? {
+        guard conn != 0 else { return nil }
+        os_unfair_lock_lock(&lock)
+        if let cached = keyInfoCache[fourCC] {
+            os_unfair_lock_unlock(&lock)
+            return cached
+        }
+        os_unfair_lock_unlock(&lock)
+
+        var input = SMCKeyData_t()
+        var output = SMCKeyData_t()
+        input.key = fourCC
+        input.data8 = SMCKeys.readKeyInfo.rawValue
+
+        let result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
+        guard result == kIOReturnSuccess && output.result == 0 else {
+            return nil
+        }
+
+        os_unfair_lock_lock(&lock)
+        keyInfoCache[fourCC] = output.keyInfo
+        os_unfair_lock_unlock(&lock)
+
+        return output.keyInfo
+    }
+
+    /// String wrapper for readKeyInfo.
+    internal func readKeyInfo(_ key: String) -> SMCKeyData_t.keyInfo_t? {
+        guard key.utf8.count == 4 else { return nil }
+        return readKeyInfo(FourCharCode(fromString: key))
+    }
     
-    public func getValue(_ key: String) -> Double? {
+    /// Zero-allocation numeric read for raw UInt32 FourCharCode.
+    public func getValue(_ key: UInt32) -> Double? {
         guard conn != 0 else { return nil }
         var val = SMCVal_t(key)
         let result = read(&val)
         guard result == kIOReturnSuccess else {
             return nil
         }
-        
-        if val.dataSize > 0 {
-            switch val.dataType {
-            case "ui8 ":
-                return Double(val.bytes[0])
-            case "ui16":
-                return Double(UInt16(bytes: (val.bytes[0], val.bytes[1])))
-            case "ui32":
-                return Double(UInt32(bytes: (val.bytes[0], val.bytes[1], val.bytes[2], val.bytes[3])))
-            case "flt ":
-                if let fval = Float(val.bytes) {
-                    return Double(fval)
-                }
-            case "sp78":
-                // sp78 = signed fixed-point: 1 sign + 8 integer + 7 fractional bits.
-                // Bytes are big-endian; use Int16 to sign-extend correctly.
-                let raw = Int16(val.bytes[0]) << 8 | Int16(val.bytes[1])
-                return Double(raw) / 256.0
-            default:
-                return nil
+        return decodeValue(val)
+    }
+
+    /// Reads numeric SMC key by String name.
+    public func getValue(_ key: String) -> Double? {
+        guard key.utf8.count == 4 else { return nil }
+        return getValue(FourCharCode(fromString: key))
+    }
+
+    /// Reads numeric SMC key (IEEE 754 'flt ', ui8, ui16, ui32, sp78, ioft, fpe2, si16, si32).
+    public func readNumericKey(_ key: String) -> Double? {
+        return getValue(key)
+    }
+
+    /// Reads numeric SMC key for raw UInt32 FourCharCode.
+    public func readNumericKey(_ key: UInt32) -> Double? {
+        return getValue(key)
+    }
+
+    private func decodeValue(_ val: SMCVal_t) -> Double? {
+        guard val.dataSize > 0 else { return nil }
+        switch val.dataType {
+        case kSMCTypeUI8:
+            return Double(val.bytes[0])
+        case kSMCTypeUI16:
+            return Double(UInt16(bytes: (val.bytes[0], val.bytes[1])))
+        case kSMCTypeUI32:
+            return Double(UInt32(bytes: (val.bytes[0], val.bytes[1], val.bytes[2], val.bytes[3])))
+        case kSMCTypeFlt:
+            if val.dataSize >= 4, let fval = Float(bytes: val.bytes) {
+                return Double(fval)
             }
+        case kSMCTypeSP78:
+            // sp78 = signed fixed-point: 1 sign + 8 integer + 7 fractional bits.
+            // Bytes are big-endian; use Int16 to sign-extend correctly.
+            let raw = Int16(val.bytes[0]) << 8 | Int16(val.bytes[1])
+            return Double(raw) / 256.0
+        case kSMCTypeIOFT:
+            // ioft = Q16.16 signed little-endian float.
+            if val.dataSize >= 4 {
+                let u32 = UInt32(val.bytes[0]) | (UInt32(val.bytes[1]) << 8) | (UInt32(val.bytes[2]) << 16) | (UInt32(val.bytes[3]) << 24)
+                return Double(Int32(bitPattern: u32)) / 65536.0
+            }
+        case kSMCTypeFpe2:
+            // fpe2 = unsigned 14.2 fixed point.
+            if val.dataSize >= 2 {
+                return Double(UInt16(val.bytes[0]) << 6 | UInt16(val.bytes[1]) >> 2) + Double(val.bytes[1] & 0x03) / 4.0
+            }
+        case kSMCTypeSI16:
+            // si16 = signed 16-bit big-endian integer.
+            if val.dataSize >= 2 {
+                let raw = Int16(val.bytes[0]) << 8 | Int16(val.bytes[1])
+                return Double(raw)
+            }
+        case kSMCTypeSI32:
+            // si32 = signed 32-bit big-endian integer.
+            if val.dataSize >= 4 {
+                let u32 = UInt32(val.bytes[0]) << 24 | UInt32(val.bytes[1]) << 16 | UInt32(val.bytes[2]) << 8 | UInt32(val.bytes[3])
+                return Double(Int32(bitPattern: u32))
+            }
+        default:
+            return nil
         }
         return nil
     }
@@ -186,7 +310,7 @@ public class SMC {
         guard result == kIOReturnSuccess else {
             return 0
         }
-        if val.dataSize == 4, val.dataType == "ui32" {
+        if val.dataSize == 4, val.dataType == kSMCTypeUI32 {
             return UInt32(bytes: (val.bytes[0], val.bytes[1], val.bytes[2], val.bytes[3]))
         }
         return 0
@@ -208,8 +332,12 @@ public class SMC {
     }
     
     public func getAllTemperatureKeys() -> [String] {
+        if let cached = cachedTempKeys {
+            return cached
+        }
         let count = getKeyCount()
         var tempKeys: [String] = []
+        tempKeys.reserveCapacity(min(Int(count), 256))
         for i in 0..<count {
             if let key = getKeyAtIndex(i) {
                 // T means Temperature in SMC
@@ -218,47 +346,44 @@ public class SMC {
                 }
             }
         }
+        cachedTempKeys = tempKeys
         return tempKeys
     }
     
     private func read(_ value: UnsafeMutablePointer<SMCVal_t>) -> kern_return_t {
-        var result: kern_return_t = 0
-        var input = SMCKeyData_t()
-        var output = SMCKeyData_t()
-        
-        let fourCC = FourCharCode(fromString: value.pointee.key)
-        input.key = fourCC
-
-        // Use cached keyInfo when available to halve IOKit round-trips.
-        if let cached = keyInfoCache[fourCC] {
-            value.pointee.dataSize = UInt32(cached.dataSize)
-            value.pointee.dataType = cached.dataType.toString()
-            input.keyInfo.dataSize = cached.dataSize
-        } else {
-            input.data8 = SMCKeys.readKeyInfo.rawValue
-            result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
-            if result != kIOReturnSuccess {
-                return result
-            }
-            keyInfoCache[fourCC] = output.keyInfo
-            value.pointee.dataSize = UInt32(output.keyInfo.dataSize)
-            value.pointee.dataType = output.keyInfo.dataType.toString()
-            input.keyInfo.dataSize = output.keyInfo.dataSize
+        let fourCC = value.pointee.key
+        guard let cached = readKeyInfo(fourCC) else {
+            return kIOReturnError
         }
 
+        value.pointee.dataSize = UInt32(cached.dataSize)
+        value.pointee.dataType = cached.dataType
+
+        var input = SMCKeyData_t()
+        var output = SMCKeyData_t()
+        input.key = fourCC
+        input.keyInfo.dataSize = cached.dataSize
         input.data8 = SMCKeys.readBytes.rawValue
-        result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
+
+        let result = call(SMCKeys.kernelIndex.rawValue, input: &input, output: &output)
         if result != kIOReturnSuccess {
             return result
         }
         
-        memcpy(&value.pointee.bytes, &output.bytes, min(Int(value.pointee.dataSize), value.pointee.bytes.count))
+        memcpy(&value.pointee.bytes.raw, &output.bytes, min(Int(value.pointee.dataSize), 32))
         return kIOReturnSuccess
     }
     
     private func call(_ index: UInt8, input: inout SMCKeyData_t, output: inout SMCKeyData_t) -> kern_return_t {
         let inputSize = MemoryLayout<SMCKeyData_t>.stride
         var outputSize = MemoryLayout<SMCKeyData_t>.stride
-        return IOConnectCallStructMethod(conn, UInt32(index), &input, inputSize, &output, &outputSize)
+        let result = IOConnectCallStructMethod(conn, UInt32(index), &input, inputSize, &output, &outputSize)
+        if result != kIOReturnSuccess {
+            return result
+        }
+        if output.result != 0 {
+            return kIOReturnError
+        }
+        return kIOReturnSuccess
     }
 }

@@ -94,6 +94,7 @@ Every key used in code must appear here (checked by `scripts/policy-check.sh`). 
 * `showCPUTemperature` (Bool; default true)
 * `LaunchAtLogin` (Bool; default false)
 * `menuBarLayout` (String "single" or "stacked"; default "single")
+* `ramDisplayMode` (String "gb" or "percent"; default "gb")
 
 ## Skills
 

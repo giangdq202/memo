@@ -32,6 +32,45 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         NSApp.setActivationPolicy(.accessory)
 
         setupStatusItem()
+        registerPowerNotifications()
+        startTimer()
+        updateStats()
+    }
+
+    public func applicationWillTerminate(_ notification: Notification) {
+        timer?.invalidate()
+        timer = nil
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
+
+    private func registerPowerNotifications() {
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(self, selector: #selector(handleScreenSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleScreenWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleSystemSleep), name: NSWorkspace.willSleepNotification, object: nil)
+        ws.addObserver(self, selector: #selector(handleSystemWake), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+
+    @objc private func handleScreenSleep() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func handleScreenWake() {
+        startTimer()
+        updateStats()
+    }
+
+    @objc private func handleSystemSleep() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func handleSystemWake() {
+        statsEngine.resetCpuTicks()
         startTimer()
         updateStats()
     }
@@ -50,6 +89,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
 
         view.showTemperature = showCPUTemperature
         view.layoutMode = settings.menuBarLayout
+        view.ramDisplayMode = settings.ramDisplayMode
 
         statusItem = item
         statsView = view
@@ -91,7 +131,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
             cpuPercent: currentCpuStats.usagePercent,
             cpuTemperature: currentCpuStats.temperature,
             tempUnit: tempUnit,
-            memGB: currentMemStats.usedGB
+            memGB: currentMemStats.usedGB,
+            memPercent: currentMemStats.usedPercent
         )
     }
 
@@ -101,7 +142,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
     /// numbers are the app's entire dashboard.
     private func showMenu() {
         guard let statusItem = statusItem else { return }
-        let menu = menuFactory.buildMenu()
+        let menu = menuFactory.buildMenu(cpuStats: currentCpuStats, memStats: currentMemStats)
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
@@ -167,6 +208,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate, MenuActions {
         settings.menuBarLayout = newLayout
         statsView?.layoutMode = newLayout
         updateStatusItemWidth()
+        statsView?.needsDisplay = true
+    }
+
+    @objc func changeRamDisplayMode(_ sender: NSMenuItem) {
+        guard let mode = sender.representedObject as? String else { return }
+        settings.ramDisplayMode = mode
+        statsView?.ramDisplayMode = mode
+        renderCurrentStats()
         statsView?.needsDisplay = true
     }
 

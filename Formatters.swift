@@ -14,5 +14,6 @@ func convertedTemperature(_ celsius: Double, unit: String) -> Double {
 /// the unit separately.
 public func formatTemperatureValue(_ celsius: Double, unit: String) -> String {
     guard celsius > 0 else { return "--" }
-    return String(format: "%.0f", convertedTemperature(celsius, unit: unit))
+    let rounded = Int(convertedTemperature(celsius, unit: unit).rounded())
+    return String(rounded)
 }

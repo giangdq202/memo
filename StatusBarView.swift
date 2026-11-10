@@ -65,7 +65,49 @@ private func temperatureUnitSuffix(_ unit: String) -> String {
 
 private let singleCpuSectionWidth = measuredWidth("100%", font: singleValFont)
 private let singleRamSectionWidth = measuredWidth("888.8G", font: singleValFont)
-private let singleTempSectionWidth = measuredWidth("188°", font: singleValFont)
+// Account for "188°F" (35pt) instead of "188°" (29pt) so Fahrenheit leading digit is never clipped.
+private let singleTempSectionWidth = measuredWidth("188°F", font: singleValFont)
+
+// Pre-allocated static attribute dictionaries (zero allocation in draw)
+private let singleValAttrs: [NSAttributedString.Key: Any] = [
+    .font: singleValFont,
+    .foregroundColor: NSColor.labelColor,
+    .paragraphStyle: rightAlignStyle
+]
+
+private let singleUnitAttrs: [NSAttributedString.Key: Any] = [
+    .font: singleUnitFont,
+    .foregroundColor: NSColor.secondaryLabelColor,
+    .paragraphStyle: rightAlignStyle
+]
+
+private let singlePercentUnit = NSAttributedString(string: "%", attributes: singleUnitAttrs)
+private let singleGBUnit = NSAttributedString(string: "G", attributes: singleUnitAttrs)
+private let singleDegreeUnit = NSAttributedString(string: "°", attributes: singleUnitAttrs)
+private let singleDegreeFUnit = NSAttributedString(string: "°F", attributes: singleUnitAttrs)
+
+private let stackedValAttrs: [NSAttributedString.Key: Any] = [
+    .font: font,
+    .foregroundColor: NSColor.labelColor,
+    .paragraphStyle: rightAlignStyle
+]
+
+private let stackedUnitAttrs: [NSAttributedString.Key: Any] = [
+    .font: cpuMemUnitFont,
+    .foregroundColor: NSColor.secondaryLabelColor,
+    .paragraphStyle: rightAlignStyle
+]
+
+private let stackedTempValAttrs: [NSAttributedString.Key: Any] = [
+    .font: tempValFont,
+    .foregroundColor: NSColor.labelColor,
+    .paragraphStyle: rightAlignStyle
+]
+
+private let stackedPercentUnit = NSAttributedString(string: " %", attributes: stackedUnitAttrs)
+private let stackedGBUnit = NSAttributedString(string: " G", attributes: stackedUnitAttrs)
+private let stackedDegreeUnit = NSAttributedString(string: "°", attributes: stackedUnitAttrs)
+private let stackedDegreeFUnit = NSAttributedString(string: "°F", attributes: stackedUnitAttrs)
 
 // MARK: - Unified Status Bar View with Cached Rendering
 public class UnifiedStatsView: BaseStatsView {
@@ -74,8 +116,19 @@ public class UnifiedStatsView: BaseStatsView {
     private var _cpuTemperature: Double = -1
     private var _tempUnit: String = "C"
     private var _memGB: Double = -1
+    private var _memPercent: Double = 0.0
 
     public var showTemperature: Bool = true
+
+    /// RAM display mode: "gb" (default) or "percent".
+    public var ramDisplayMode: String = "gb" {
+        didSet {
+            if oldValue != ramDisplayMode {
+                invalidateRenderCaches()
+                needsDisplay = true
+            }
+        }
+    }
 
     /// Column arrangement; switching it invalidates every cached line.
     public var layoutMode: MenuBarLayout = .single {
@@ -107,6 +160,7 @@ public class UnifiedStatsView: BaseStatsView {
     // Cached raw values used as cache invalidation keys (avoid String allocation)
     private var lastCpuPct: Double = -1
     private var lastMemGB: Double = -1
+    private var lastMemPct: Double = -1
     private var lastTempC: Double = -1
     private var lastTempUnit: String = ""
 
@@ -128,34 +182,34 @@ public class UnifiedStatsView: BaseStatsView {
         self.layerContentsRedrawPolicy = .onSetNeedsDisplay
     }
 
-    public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double) {
+    override public func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        invalidateRenderCaches()
+        needsDisplay = true
+    }
+
+    public func updateValues(cpuPercent: Double, cpuTemperature: Double, tempUnit: String, memGB: Double, memPercent: Double = 0.0) {
         let dispCpu = cpuPercent.rounded()
         let dispTemp = cpuTemperature > 0 ? cpuTemperature.rounded() : -1.0
         let dispMemGB = (memGB * 10.0).rounded() / 10.0
+        let dispMemPct = memPercent.rounded()
 
         var changed = false
         if _cpuPercent != dispCpu { _cpuPercent = dispCpu; changed = true }
         if _cpuTemperature != dispTemp { _cpuTemperature = dispTemp; changed = true }
         if _tempUnit != tempUnit { _tempUnit = tempUnit; changed = true }
         if _memGB != dispMemGB { _memGB = dispMemGB; changed = true }
+        if _memPercent != dispMemPct { _memPercent = dispMemPct; changed = true }
         if changed {
-            // One sentence for VoiceOver; allocated only when a value changed.
-            let tempText = dispTemp > 0 ? formatTemperatureValue(dispTemp, unit: tempUnit) + "°" + tempUnit : "unavailable"
-            setAccessibilityLabel("CPU \(Int(dispCpu)) percent, memory \(String(format: "%.1f", dispMemGB)) gigabytes, temperature \(tempText)")
             needsDisplay = true
         }
     }
 
-    /// Builds a value + unit pair: value in labelColor, unit smaller and dimmer.
-    private func buildLine(val: String, unit: String, valFont: NSFont, uFont: NSFont) -> NSAttributedString {
-        let s = NSMutableAttributedString()
-        s.append(NSAttributedString(string: val, attributes: [
-            .font: valFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
-        ]))
-        s.append(NSAttributedString(string: " " + unit, attributes: [
-            .font: uFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
-        ]))
-        return s
+    /// On-demand accessibility label; allocated only when VoiceOver / accessibility clients query it.
+    override public func accessibilityLabel() -> String? {
+        let tempText = _cpuTemperature > 0 ? formatTemperatureValue(_cpuTemperature, unit: _tempUnit) + "°" + _tempUnit : "unavailable"
+        let memText = ramDisplayMode == "percent" ? "\(Int(_memPercent)) percent" : "\(String(format: "%.1f", _memGB)) gigabytes"
+        return "CPU \(Int(_cpuPercent)) percent, memory \(memText), temperature \(tempText)"
     }
 
     /// Clears every cached attributed string and invalidation key so the next
@@ -163,7 +217,7 @@ public class UnifiedStatsView: BaseStatsView {
     private func invalidateRenderCaches() {
         cachedCpuLine = nil; cachedMemLine = nil; cachedTempLine = nil; cachedTempUnitLine = nil
         cachedSingleCpuLine = nil; cachedSingleRamLine = nil; cachedSingleTempLine = nil
-        lastCpuPct = -1; lastMemGB = -1; lastTempC = -1; lastTempUnit = ""
+        lastCpuPct = -1; lastMemGB = -1; lastMemPct = -1; lastTempC = -1; lastTempUnit = ""
     }
 
     override public func draw(_ dirtyRect: NSRect) {
@@ -192,12 +246,8 @@ public class UnifiedStatsView: BaseStatsView {
         if cachedSingleCpuLine == nil || _cpuPercent != lastCpuPct {
             lastCpuPct = _cpuPercent
             let s = NSMutableAttributedString()
-            s.append(NSAttributedString(string: String(format: "%.0f", _cpuPercent), attributes: [
-                .font: singleValFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
-            ]))
-            s.append(NSAttributedString(string: "%", attributes: [
-                .font: singleUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
-            ]))
+            s.append(NSAttributedString(string: String(Int(_cpuPercent)), attributes: singleValAttrs))
+            s.append(singlePercentUnit)
             cachedSingleCpuLine = s
         }
         cachedSingleCpuLine?.draw(in: CGRect(x: x, y: y, width: singleCpuSectionWidth, height: lineH))
@@ -205,15 +255,17 @@ public class UnifiedStatsView: BaseStatsView {
         separatorDot.draw(in: CGRect(x: x, y: y, width: separatorSlotWidth, height: lineH))
         x += separatorSlotWidth
 
-        if cachedSingleRamLine == nil || _memGB != lastMemGB {
+        if cachedSingleRamLine == nil || _memGB != lastMemGB || _memPercent != lastMemPct {
             lastMemGB = _memGB
+            lastMemPct = _memPercent
             let s = NSMutableAttributedString()
-            s.append(NSAttributedString(string: String(format: "%.1f", _memGB), attributes: [
-                .font: singleValFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
-            ]))
-            s.append(NSAttributedString(string: "G", attributes: [
-                .font: singleUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
-            ]))
+            if ramDisplayMode == "percent" {
+                s.append(NSAttributedString(string: String(Int(_memPercent)), attributes: singleValAttrs))
+                s.append(singlePercentUnit)
+            } else {
+                s.append(NSAttributedString(string: String(format: "%.1f", _memGB), attributes: singleValAttrs))
+                s.append(singleGBUnit)
+            }
             cachedSingleRamLine = s
         }
         cachedSingleRamLine?.draw(in: CGRect(x: x, y: y, width: singleRamSectionWidth, height: lineH))
@@ -227,13 +279,9 @@ public class UnifiedStatsView: BaseStatsView {
                 lastTempC = _cpuTemperature
                 lastTempUnit = _tempUnit
                 let s = NSMutableAttributedString()
-                s.append(NSAttributedString(string: formatTemperatureValue(_cpuTemperature, unit: _tempUnit), attributes: [
-                    .font: singleValFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
-                ]))
+                s.append(NSAttributedString(string: formatTemperatureValue(_cpuTemperature, unit: _tempUnit), attributes: singleValAttrs))
                 if _cpuTemperature > 0 {
-                    s.append(NSAttributedString(string: temperatureUnitSuffix(_tempUnit), attributes: [
-                        .font: singleUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
-                    ]))
+                    s.append(_tempUnit == "F" ? singleDegreeFUnit : singleDegreeUnit)
                 }
                 cachedSingleTempLine = s
             }
@@ -254,16 +302,26 @@ public class UnifiedStatsView: BaseStatsView {
         // CPU
         if cachedCpuLine == nil || _cpuPercent != lastCpuPct {
             lastCpuPct = _cpuPercent
-            cachedCpuLine = buildLine(val: String(format: "%.0f", _cpuPercent), unit: "%",
-                                      valFont: font, uFont: cpuMemUnitFont)
+            let s = NSMutableAttributedString()
+            s.append(NSAttributedString(string: String(Int(_cpuPercent)), attributes: stackedValAttrs))
+            s.append(stackedPercentUnit)
+            cachedCpuLine = s
         }
         cachedCpuLine?.draw(in: CGRect(x: currentX, y: line1Y, width: cpuMemW, height: lineH))
 
         // RAM
-        if cachedMemLine == nil || _memGB != lastMemGB {
+        if cachedMemLine == nil || _memGB != lastMemGB || _memPercent != lastMemPct {
             lastMemGB = _memGB
-            cachedMemLine = buildLine(val: String(format: "%.1f", _memGB), unit: "G",
-                                      valFont: font, uFont: cpuMemUnitFont)
+            lastMemPct = _memPercent
+            let s = NSMutableAttributedString()
+            if ramDisplayMode == "percent" {
+                s.append(NSAttributedString(string: String(Int(_memPercent)), attributes: stackedValAttrs))
+                s.append(stackedPercentUnit)
+            } else {
+                s.append(NSAttributedString(string: String(format: "%.1f", _memGB), attributes: stackedValAttrs))
+                s.append(stackedGBUnit)
+            }
+            cachedMemLine = s
         }
         cachedMemLine?.draw(in: CGRect(x: currentX, y: line2Y, width: cpuMemW, height: lineH))
 
@@ -278,17 +336,15 @@ public class UnifiedStatsView: BaseStatsView {
 
                 // Value line (top, bigger font)
                 let s1 = NSMutableAttributedString()
-                s1.append(NSAttributedString(string: tempVal, attributes: [
-                    .font: tempValFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: rightAlignStyle
-                ]))
+                s1.append(NSAttributedString(string: tempVal, attributes: stackedTempValAttrs))
                 cachedTempLine = s1
 
                 // Unit line (bottom, standard font, dimmed)
-                let s2 = NSMutableAttributedString()
-                s2.append(NSAttributedString(string: _cpuTemperature > 0 ? temperatureUnitSuffix(_tempUnit) : "", attributes: [
-                    .font: cpuMemUnitFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: rightAlignStyle
-                ]))
-                cachedTempUnitLine = s2
+                if _cpuTemperature > 0 {
+                    cachedTempUnitLine = _tempUnit == "F" ? stackedDegreeFUnit : stackedDegreeUnit
+                } else {
+                    cachedTempUnitLine = nil
+                }
             }
             cachedTempLine?.draw(in: CGRect(x: currentX, y: line1Y, width: tempW, height: lineH))
             cachedTempUnitLine?.draw(in: CGRect(x: currentX, y: line2Y, width: tempW, height: lineH))
